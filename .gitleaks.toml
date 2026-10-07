@@ -1,0 +1,8 @@
+# gitleaks: the default rules, plus the throwaway secret the CI test run
+# uses (it only signs sessions of a database that lives for one CI job).
+[extend]
+useDefault = true
+
+[allowlist]
+description = "CI-only test values"
+regexes = ['''ci-secret-at-least-32-characters-long''']

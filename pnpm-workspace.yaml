@@ -1,0 +1,8 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+  - "site"
+# Packages allowed to run install/build lifecycle scripts (pnpm 10+ blocks
+# these by default). esbuild ships a native binary via its postinstall.
+onlyBuiltDependencies:
+  - esbuild

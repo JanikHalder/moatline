@@ -1,0 +1,68 @@
+# Container images for self-hosting and the one-click templates
+# (templates/dokploy, templates/coolify): ghcr.io/<owner>/moatline-api
+# and -web. Every push to main updates :main; a tag v1.2.3 publishes
+# :1.2.3 and :latest — the templates pin a released version.
+name: Images
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: images-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  image:
+    # While the repository is private, pushes to main would only burn
+    # Actions minutes: build on release tags and by hand until it is public.
+    if: >-
+      github.event_name != 'push' ||
+      startsWith(github.ref, 'refs/tags/v') ||
+      !github.event.repository.private
+    runs-on: ubuntu-latest
+    # A normal build takes under 15 minutes; a stuck one (seen twice on the
+    # arm64 api build) fails here and can be re-run instead of blocking an hour.
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [api, web, probe]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/moatline-${{ matrix.part }}
+          tags: |
+            type=ref,event=branch
+            type=sha,format=short
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.${{ matrix.part }}
+          # Hetzner's ARM servers are common among self-hosters.
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            APP_VERSION=${{ steps.meta.outputs.version }}
+          cache-from: type=gha,scope=${{ matrix.part }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.part }}

@@ -1,0 +1,61 @@
+# documentation: https://github.com/JanikHalder/moatline#readme
+# slogan: Security and operations for self-hosted apps — vulnerabilities fixed by pull request, guarded deploys, uptime, backups and database checks.
+# category: security
+# tags: security, monitoring, devops, vulnerabilities, backups, uptime
+# logo: svgs/moatline.svg
+# port: 80
+
+services:
+  web:
+    image: ghcr.io/janikhalder/moatline-web:1.10.0
+    environment:
+      - SERVICE_URL_WEB_80
+    depends_on:
+      - api
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  api:
+    image: ghcr.io/janikhalder/moatline-api:1.10.0
+    environment:
+      - DATABASE_URL=postgresql://$SERVICE_USER_POSTGRES:$SERVICE_PASSWORD_POSTGRES@postgres:5432/${POSTGRES_DB:-package_checker}
+      - BETTER_AUTH_SECRET=$SERVICE_PASSWORD_64_AUTH
+      - SECRETS_KEY=$SERVICE_PASSWORD_64_SECRETS
+      - BETTER_AUTH_URL=$SERVICE_URL_WEB
+      - CORS_ORIGIN=$SERVICE_URL_WEB
+      - APP_URL=$SERVICE_URL_WEB
+      - ENABLE_SCHEDULER=true
+      - RESEND_API_KEY=${RESEND_API_KEY}
+      - MAIL_FROM=${MAIL_FROM}
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASS=${SMTP_PASS}
+      - SMTP_FROM=${SMTP_FROM}
+      - PORT=3001
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3001/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+  postgres:
+    image: postgres:16-alpine
+    volumes:
+      - moatline-postgres:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=$SERVICE_USER_POSTGRES
+      - POSTGRES_PASSWORD=$SERVICE_PASSWORD_POSTGRES
+      - POSTGRES_DB=${POSTGRES_DB:-package_checker}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 20s
+      retries: 10

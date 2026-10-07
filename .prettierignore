@@ -1,0 +1,13 @@
+node_modules
+dist
+coverage
+*.min.js
+pnpm-lock.yaml
+playwright-report
+test-results
+packages/db/drizzle
+
+# Generated from docs/ at build (site/scripts/sync-docs.mjs)
+site/reference
+site/.vitepress/dist
+site/.vitepress/cache

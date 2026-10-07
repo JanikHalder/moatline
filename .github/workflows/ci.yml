@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DATABASE_URL: postgres://postgres:postgres@localhost:5432/package_checker_test
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: package_checker_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # The version comes from "packageManager" in package.json — naming it
+      # here as well makes the action refuse to run.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm run lint
+
+      - name: Check formatting
+        run: pnpm run format:check
+
+      - name: Build (type-checks api and web)
+        run: pnpm run build
+
+      - name: Run migrations
+        run: pnpm run db:migrate
+
+      - name: Smoke-test the built API
+        # `tsc` alone cannot catch this: the bundled server has to actually
+        # boot and answer, or the container image is dead on arrival.
+        run: |
+          NODE_ENV=production \
+          BETTER_AUTH_SECRET=ci-secret-at-least-32-characters-long \
+          BETTER_AUTH_URL=http://localhost:3001 \
+          CORS_ORIGIN=http://localhost:5173 \
+          PORT=3001 \
+          node apps/api/dist/index.js &
+          for i in $(seq 1 30); do
+            sleep 1
+            if curl -fsS http://localhost:3001/api/health; then
+              echo "API is up"; exit 0
+            fi
+          done
+          echo "API did not become healthy"; exit 1
+
+      - name: Unit tests
+        run: pnpm run test
+
+      - name: Install Playwright browser
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: E2E tests
+        run: pnpm run test:e2e
+        env:
+          CI: "true"
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7

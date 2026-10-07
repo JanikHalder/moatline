@@ -1,0 +1,91 @@
+/*
+ * Tokens. Light by default: a cool grey-white, ink in deep forest green, the
+ * logo's shield green as the one accent, amber for findings, red only for
+ * "critical". IBM Plex — the voice of technical documentation.
+ */
+:root {
+  --pc-paper: #f2f4f3;
+  --pc-paper-2: #e8ecea;
+  --pc-ink: #12241b;
+  --pc-ink-2: #45564d;
+  --pc-ink-3: #6b7a72;
+  --pc-line: #d3dbd6;
+  --pc-green: #0b6b47;
+  --pc-amber: #b86e00;
+  --pc-red: #b3261e;
+
+  --vp-font-family-base: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --vp-font-family-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  --vp-c-bg: var(--pc-paper);
+  --vp-c-bg-alt: var(--pc-paper-2);
+  --vp-c-bg-soft: var(--pc-paper-2);
+  --vp-c-bg-elv: #fbfcfb;
+  --vp-c-text-1: var(--pc-ink);
+  --vp-c-text-2: var(--pc-ink-2);
+  --vp-c-text-3: var(--pc-ink-3);
+  --vp-c-divider: var(--pc-line);
+  --vp-c-gutter: var(--pc-line);
+  --vp-c-brand-1: var(--pc-green);
+  --vp-c-brand-2: #095a3c;
+  --vp-c-brand-3: var(--pc-green);
+  --vp-c-brand-soft: rgba(11, 107, 71, 0.1);
+  --vp-c-tip-soft: rgba(11, 107, 71, 0.08);
+  --vp-code-block-bg: #e4e9e6;
+  --vp-nav-bg-color: var(--pc-paper);
+  --vp-sidebar-bg-color: var(--pc-paper-2);
+}
+
+.dark {
+  --pc-paper: #101a15;
+  --pc-paper-2: #16231c;
+  --pc-ink: #e3ebe6;
+  --pc-ink-2: #a9b8b0;
+  --pc-ink-3: #7e8e85;
+  --pc-line: #2a3a31;
+  --pc-green: #4cc290;
+  --pc-amber: #e0a03a;
+  --pc-red: #f0857c;
+  --vp-c-bg-elv: #1a2820;
+  --vp-c-brand-2: #6fd3a6;
+  --vp-code-block-bg: #16231c;
+}
+
+body {
+  font-feature-settings: "ss02";
+}
+
+.vp-doc h1,
+.vp-doc h2,
+.vp-doc h3 {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.vp-doc p,
+.vp-doc li {
+  max-width: 68ch;
+}
+
+:focus-visible {
+  outline: 2px solid var(--pc-green);
+  outline-offset: 2px;
+}
+
+/* Legal pages: readable prose on a page layout. */
+.legal {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 64px 24px 120px;
+}
+.legal h1 {
+  font-size: 34px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin-bottom: 8px;
+}
+.legal h2 {
+  margin-top: 40px;
+  border-top: 0;
+  padding-top: 0;
+}

@@ -1,0 +1,62 @@
+# Nuclei, pinned. Taken from the official image rather than a download URL so
+# the version is part of the build definition and gets updated deliberately.
+ARG NUCLEI_IMAGE=projectdiscovery/nuclei:v3.11.1
+FROM ${NUCLEI_IMAGE} AS nuclei
+
+FROM node:20-alpine AS base
+# A shared corepack home: the runtime user is not root and must still find
+# the pnpm prepared here (the entrypoint runs migrations through it).
+ENV COREPACK_HOME=/opt/corepack COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+RUN corepack enable && corepack prepare pnpm@10.8.1 --activate \
+ && chmod -R a+rX /opt/corepack
+WORKDIR /app
+
+FROM base AS deps
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY packages/db/package.json packages/db/
+COPY apps/api/package.json apps/api/
+# Only the API and what it depends on — not the web app's toolchain. The
+# arm64 image is built under emulation, where every package counts.
+RUN pnpm install --frozen-lockfile --filter "api..."
+
+FROM base AS build
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+RUN pnpm install --frozen-lockfile --filter "api..."
+RUN pnpm --filter api build
+
+FROM base AS runner
+ENV NODE_ENV=production
+# The release this image is (set by .github/workflows/images.yml); shown in
+# Settings → Updates and compared with the newest GitHub release.
+ARG APP_VERSION=dev
+ENV APP_VERSION=${APP_VERSION}
+# git + openssh: required by the scan/update/security-fix workflows (git clone/push).
+# node:20-alpine ships npm/npx (used for npm audit / npm audit fix / npm-check-updates).
+RUN apk add --no-cache git openssh-client ca-certificates
+# Nuclei scans the live URLs of the applications (see services/nuclei.ts).
+COPY --from=nuclei /usr/local/bin/nuclei /usr/local/bin/nuclei
+COPY --from=build /app/package.json /app/pnpm-lock.yaml /app/pnpm-workspace.yaml ./
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/packages/db ./packages/db
+COPY --from=build /app/apps/api/package.json ./apps/api/
+# pnpm keeps each workspace package's dependencies in its own node_modules
+# (symlinks into the root store), so the API's runtime deps live here.
+COPY --from=build /app/apps/api/node_modules ./apps/api/node_modules
+COPY --from=build /app/apps/api/dist ./apps/api/dist
+# Shipped as source: the scan runs depcheck in a separate node process.
+COPY --from=build /app/apps/api/src/scripts ./apps/api/src/scripts
+# Served to servers that install the monitoring agent, and the setup scripts
+# (hardening, automatic updates) the app hands out next to it.
+COPY --from=build /app/apps/api/agent ./apps/api/agent
+COPY --from=build /app/apps/api/server-scripts ./apps/api/server-scripts
+COPY docker-api-entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+# The API runs untrusted repository scripts (npm install/build) and holds the
+# organization secrets — not as root.
+RUN addgroup -S app && adduser -S -G app -h /home/app app
+USER app
+# Nuclei templates are fetched by the first scan and refreshed daily
+# (services/nuclei.ts) — downloading them here took most of the arm64 build.
+EXPOSE 3001
+ENTRYPOINT ["/entrypoint.sh"]

@@ -1,0 +1,6 @@
+# A Moatline probe: checks sites from another location. Tiny on purpose.
+FROM node:20-alpine
+WORKDIR /probe
+COPY apps/probe/probe.mjs ./
+USER node
+CMD ["node", "probe.mjs"]

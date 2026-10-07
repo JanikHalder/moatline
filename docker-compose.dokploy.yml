@@ -1,0 +1,78 @@
+# Dokploy, building from this repository (Compose → Git provider, compose
+# path ./docker-compose.dokploy.yml) — for when the images on ghcr.io are not
+# pullable. Builds on the server; the prebuilt images
+# (templates/dokploy/moatline/docker-compose.yml) need neither the time nor
+# the memory. Same environment: PUBLIC_URL, POSTGRES_PASSWORD,
+# BETTER_AUTH_SECRET, SECRETS_KEY; the domain goes on service "web", port 80.
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: package_checker
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: package_checker
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U package_checker"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://package_checker:${POSTGRES_PASSWORD}@postgres:5432/package_checker
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
+      SECRETS_KEY: ${SECRETS_KEY}
+      BETTER_AUTH_URL: ${PUBLIC_URL}
+      CORS_ORIGIN: ${PUBLIC_URL}
+      APP_URL: ${PUBLIC_URL}
+      ENABLE_SCHEDULER: "true"
+      # Mail for sign-up confirmations, password resets and invitations when
+      # an organization has no mail server of its own: Resend (MAIL_FROM on a
+      # domain verified there) or, instead, any SMTP server.
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      MAIL_FROM: ${MAIL_FROM:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      # Hosting Moatline for others (open sign-up, no repository code runs
+      # here) — see docs/CLOUD.md. Leave off for your own team.
+      CLOUD_MODE: ${CLOUD_MODE:-false}
+      BILLING_FREE_ORGS: ${BILLING_FREE_ORGS:-}
+      OPERATOR_EMAILS: ${OPERATOR_EMAILS:-}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_PRICE_SOLO: ${STRIPE_PRICE_SOLO:-}
+      STRIPE_PRICE_TEAM: ${STRIPE_PRICE_TEAM:-}
+      STRIPE_PRICE_AGENCY: ${STRIPE_PRICE_AGENCY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      PORT: "3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3001/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    restart: unless-stopped
+    expose:
+      - 80
+    depends_on:
+      - api
+
+volumes:
+  postgres-data: {}

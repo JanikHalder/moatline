@@ -1,0 +1,35 @@
+# Nixpacks build: one service that serves both the API and the web app.
+#
+# The API serves apps/web/dist for every path that is not /api/*, so a single
+# domain covers everything — no CORS between two origins, and no API URL baked
+# into the web bundle. Leave VITE_API_URL unset so the bundle uses relative
+# URLs.
+#
+# git and openssh are runtime requirements, not build tools: scans clone
+# repositories, and the update and security workflows push branches. npm and
+# npx ship with the Node image and are used for `npm audit` / `npm audit fix`.
+
+# Environment variables come from the platform (e.g. Dokploy), not from here.
+# Scheduled scans need ENABLE_SCHEDULER=true on exactly one instance — without
+# it a repository's scan schedule is stored but never runs.
+#
+# Set GIT_COMMIT_SHA to the deployed commit: /api/health reports it, which is
+# what makes "did this deploy actually go live?" answerable from the outside
+# (the repository live-check reads exactly that field).
+
+[phases.setup]
+# nuclei: scans the live URLs of the applications on monitored servers.
+nixPkgs = ["nodejs_20", "pnpm", "git", "openssh", "nuclei"]
+
+[phases.install]
+cmds = ["pnpm install --frozen-lockfile"]
+
+[phases.build]
+cmds = ["pnpm run build"]
+
+# Migrations run before the server starts, and drizzle-kit must survive into
+# this step — do not prune dev dependencies before it. A failing migration
+# aborts the start, rather than serving an API against a database with no
+# tables.
+[start]
+cmd = "pnpm run db:migrate && node apps/api/dist/index.js"

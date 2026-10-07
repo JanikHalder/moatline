@@ -1,0 +1,19 @@
+node_modules
+**/node_modules
+**/dist
+.git
+*.md
+.env
+.env.*
+!.env.example
+e2e
+**/test-results
+**/playwright-report
+**/.cursor
+*.log
+# The landing page's build output. The site itself stays in: builders
+# without BuildKit (Dokploy's build server) ignore Dockerfile.site.dockerignore
+# and use this file for Dockerfile.site too.
+site/.vitepress/dist
+site/.vitepress/cache
+site/reference

@@ -1,0 +1,52 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: package_checker
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-package_checker}
+      POSTGRES_DB: package_checker
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U package_checker"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://package_checker:${POSTGRES_PASSWORD:-package_checker}@postgres:5432/package_checker
+      # Required: the image runs with NODE_ENV=production, so a default here
+      # would mean every deployment shares a publicly known signing key.
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set to at least 32 characters, e.g. openssl rand -base64 32}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:8080}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:8080}
+      # Public URL of the web app, used for invitation and password-reset links.
+      APP_URL: ${APP_URL:-http://localhost:8080}
+      SECRETS_KEY: ${SECRETS_KEY:?set to a strong passphrase, e.g. openssl rand -base64 32}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      # This file runs a single api replica, so the scheduled-scan cron is on
+      # by default. Set ENABLE_SCHEDULER=false if you scale api beyond one.
+      ENABLE_SCHEDULER: ${ENABLE_SCHEDULER:-true}
+      PORT: "3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:

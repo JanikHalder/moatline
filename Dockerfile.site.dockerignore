@@ -1,0 +1,12 @@
+# Used by Dockerfile.site instead of .dockerignore (BuildKit): the site is
+# built from Markdown, so *.md stays in.
+node_modules
+**/node_modules
+site/.vitepress/dist
+site/.vitepress/cache
+site/reference
+.git
+.env
+.env.*
+apps
+e2e
