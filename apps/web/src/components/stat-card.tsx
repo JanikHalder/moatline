@@ -1,5 +1,4 @@
 import type { ComponentType, ReactNode } from "react";
-import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
 export type StatTone = "default" | "destructive" | "warning" | "success";
@@ -19,8 +18,31 @@ const TONE_DOT: Record<StatTone, string> = {
 };
 
 /**
- * A single KPI tile: label, big number, optional hint. A value of zero is
- * greyed out on purpose — a wall of red zeros reads as an alarm.
+ * The key figures of a page, as one band divided by hairlines rather than
+ * a row of separate cards: they are read together, as one line of state.
+ */
+export function StatBand({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "grid grid-cols-2 gap-px overflow-hidden rounded-lg border bg-border lg:grid-cols-4",
+        className
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
+/**
+ * One figure in a StatBand: label, number, optional hint. A value of zero
+ * is greyed out on purpose — a wall of red zeros reads as an alarm.
  */
 export function StatCard({
   label,
@@ -40,32 +62,30 @@ export function StatCard({
 }) {
   const muted = value === 0 || value === "0";
   return (
-    <Card className={cn("gap-0 py-0", className)}>
-      <CardContent className="space-y-3 p-4">
-        <div className="flex items-center justify-between gap-2">
-          <span className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-            {!Icon && (
-              <span
-                aria-hidden
-                className={cn("size-2 rounded-full", TONE_DOT[tone])}
-              />
-            )}
-            {label}
-          </span>
-          {Icon && <Icon className="size-4 text-muted-foreground" />}
-        </div>
-        <div
-          className={cn(
-            "tabular text-3xl font-semibold leading-none tracking-tight",
-            muted ? "text-muted-foreground/40" : TONE_TEXT[tone]
+    <div className={cn("space-y-2 bg-card p-4", className)}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="flex items-center gap-2 text-sm text-muted-foreground">
+          {!Icon && (
+            <span
+              aria-hidden
+              className={cn("size-2 rounded-full", TONE_DOT[tone])}
+            />
           )}
-        >
-          {value}
-        </div>
-        {description && (
-          <p className="text-xs text-muted-foreground">{description}</p>
+          {label}
+        </span>
+        {Icon && <Icon className="size-4 text-muted-foreground" />}
+      </div>
+      <div
+        className={cn(
+          "tabular text-2xl font-semibold leading-none tracking-tight",
+          muted ? "text-muted-foreground/50" : TONE_TEXT[tone]
         )}
-      </CardContent>
-    </Card>
+      >
+        {value}
+      </div>
+      {description && (
+        <p className="text-xs text-muted-foreground">{description}</p>
+      )}
+    </div>
   );
 }

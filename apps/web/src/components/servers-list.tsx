@@ -31,7 +31,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { PageHeader } from "@/components/page-header";
-import { StatCard } from "@/components/stat-card";
+import { StatBand, StatCard } from "@/components/stat-card";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorAlert } from "@/components/error-alert";
 import { AgentUpdateAlert } from "@/components/agent-update-alert";
@@ -197,10 +197,10 @@ function ServersSkeleton() {
     <>
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {[0, 1, 2, 3].map((i) => (
-          <Skeleton key={i} className="h-[92px] rounded-xl" />
+          <Skeleton key={i} className="h-[92px] rounded-lg" />
         ))}
       </div>
-      <Skeleton className="h-64 rounded-xl" />
+      <Skeleton className="h-64 rounded-lg" />
     </>
   );
 }
@@ -294,7 +294,7 @@ export function ServersList() {
       />
 
       {servers.length > 0 && (
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <StatBand>
           <StatCard
             label={tx("Reporting")}
             value={`${servers.length - silent.length}/${servers.length}`}
@@ -318,7 +318,7 @@ export function ServersList() {
             tone="warning"
             description={tx("pending across all servers")}
           />
-        </div>
+        </StatBand>
       )}
 
       <Card className="gap-0 overflow-hidden py-0">

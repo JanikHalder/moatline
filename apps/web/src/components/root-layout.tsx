@@ -230,7 +230,7 @@ function NavUser({ email }: { email: string }) {
               className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             >
               <Avatar className="size-8 rounded-lg">
-                <AvatarFallback className="rounded-lg text-xs">
+                <AvatarFallback className="rounded-lg border bg-background text-xs">
                   {initials}
                 </AvatarFallback>
               </Avatar>

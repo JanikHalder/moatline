@@ -12,7 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { StatCard } from "@/components/stat-card";
+import { StatBand, StatCard } from "@/components/stat-card";
 import { ErrorAlert } from "@/components/error-alert";
 import { formatRelative } from "@/lib/schedule";
 import { useT } from "@/lib/i18n";
@@ -33,7 +33,7 @@ export function ServerVersionsTable() {
       );
   }, [t]);
   if (error) return <ErrorAlert>{error}</ErrorAlert>;
-  if (!data) return <Skeleton className="h-64 rounded-xl" />;
+  if (!data) return <Skeleton className="h-64 rounded-lg" />;
 
   const list = data.servers;
   const eol = list.filter((s) => s.support.status === "eol").length;
@@ -43,7 +43,7 @@ export function ServerVersionsTable() {
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <StatBand>
         <StatCard
           label={t("OS out of support")}
           value={eol}
@@ -68,7 +68,7 @@ export function ServerVersionsTable() {
           tone={agents ? "warning" : "success"}
           description={t("servers on the current agent")}
         />
-      </div>
+      </StatBand>
       <Card className="gap-0 overflow-hidden py-0">
         <Table>
           <TableHeader>

@@ -95,7 +95,7 @@ function BrandPanel() {
     },
   ];
   return (
-    <div className="relative hidden flex-col justify-between overflow-hidden bg-[#0b1220] p-10 text-white lg:flex">
+    <div className="relative hidden flex-col justify-between overflow-hidden bg-[#12241b] p-10 text-white lg:flex">
       <div className="flex items-center gap-2 text-lg font-semibold">
         <Logo className="size-8" />
         Moatline

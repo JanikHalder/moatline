@@ -184,7 +184,7 @@ export function RepoVerdict(props: Parameters<typeof verdictOf>[0]) {
   return (
     <div
       className={cn(
-        "flex flex-wrap items-center gap-x-4 gap-y-3 rounded-xl border px-5 py-4",
+        "flex flex-wrap items-center gap-x-4 gap-y-3 rounded-lg border px-5 py-4",
         TONE[v.tone]
       )}
       role="status"

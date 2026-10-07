@@ -13,7 +13,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { PageHeader } from "@/components/page-header";
-import { StatCard } from "@/components/stat-card";
+import { StatBand, StatCard } from "@/components/stat-card";
 import { ErrorAlert } from "@/components/error-alert";
 import { formatDateTime, formatRelative } from "@/lib/schedule";
 import { tx } from "@/lib/i18n";
@@ -56,7 +56,7 @@ export function OperatorPage() {
         {header}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {[0, 1, 2, 3].map((i) => (
-            <Skeleton key={i} className="h-28 rounded-xl" />
+            <Skeleton key={i} className="h-28 rounded-lg" />
           ))}
         </div>
       </div>
@@ -70,7 +70,7 @@ export function OperatorPage() {
   return (
     <div className="space-y-6">
       {header}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <StatBand>
         <StatCard
           label={tx("Users")}
           value={users.total}
@@ -105,7 +105,7 @@ export function OperatorPage() {
             r: organizations.withRepository,
           })}
         />
-      </div>
+      </StatBand>
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">

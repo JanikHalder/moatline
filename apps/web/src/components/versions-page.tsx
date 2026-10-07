@@ -35,7 +35,7 @@ import {
 } from "@/components/ui/table";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { PageHeader } from "@/components/page-header";
-import { StatCard } from "@/components/stat-card";
+import { StatBand, StatCard } from "@/components/stat-card";
 import { ErrorAlert } from "@/components/error-alert";
 import { ServerVersionsTable } from "@/components/server-versions";
 import { cn } from "@/lib/utils";
@@ -199,7 +199,7 @@ function SiteVersions() {
         {error ? (
           <ErrorAlert>{error}</ErrorAlert>
         ) : (
-          <Skeleton className="h-96 rounded-xl" />
+          <Skeleton className="h-96 rounded-lg" />
         )}
       </div>
     );
@@ -273,7 +273,7 @@ function SiteVersions() {
     <div className="space-y-6">
       {error && <ErrorAlert>{error}</ErrorAlert>}
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <StatBand>
         <StatCard
           label={`Payload ${data.latest.payload ?? ""}`}
           value={`${behind("payload")}/${using("payload")}`}
@@ -300,7 +300,7 @@ function SiteVersions() {
           tone={eol ? "destructive" : "success"}
           description={t("sites on a Node.js without security updates")}
         />
-      </div>
+      </StatBand>
 
       {unscanned > 0 && (
         <div className="flex flex-wrap items-center gap-3 rounded-md border px-4 py-3 text-sm">

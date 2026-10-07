@@ -111,7 +111,7 @@ export function ClientsPage() {
       {clients === null ? (
         <div className="grid gap-4 @2xl/main:grid-cols-2 @5xl/main:grid-cols-3">
           {[0, 1, 2].map((i) => (
-            <Skeleton key={i} className="h-32 rounded-xl" />
+            <Skeleton key={i} className="h-32 rounded-lg" />
           ))}
         </div>
       ) : clients.length === 0 ? (

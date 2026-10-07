@@ -52,7 +52,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { PageHeader } from "@/components/page-header";
-import { StatCard } from "@/components/stat-card";
+import { StatBand, StatCard } from "@/components/stat-card";
 import { CronChecksTab, PlatformsTab } from "@/components/monitoring-jobs";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorAlert } from "@/components/error-alert";
@@ -195,10 +195,10 @@ function UptimeTab() {
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           {[0, 1, 2, 3].map((i) => (
-            <Skeleton key={i} className="h-[92px] rounded-xl" />
+            <Skeleton key={i} className="h-[92px] rounded-lg" />
           ))}
         </div>
-        <Skeleton className="h-64 rounded-xl" />
+        <Skeleton className="h-64 rounded-lg" />
       </div>
     );
   }
@@ -278,7 +278,7 @@ function UptimeTab() {
         </ErrorAlert>
       )}
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <StatBand>
         <StatCard
           label={tx("Up")}
           value={`${all.length - down - retrying}/${all.length}`}
@@ -306,7 +306,7 @@ function UptimeTab() {
             n: CERT_WARN_DAYS,
           })}
         />
-      </div>
+      </StatBand>
 
       <Card className="gap-0 overflow-hidden pb-0">
         <CardHeader className="border-b pb-4 [.border-b]:pb-4">
@@ -756,7 +756,7 @@ function CoverageTab() {
   }, []);
 
   if (error) return <ErrorAlert>{error}</ErrorAlert>;
-  if (!servers) return <Skeleton className="h-64 rounded-xl" />;
+  if (!servers) return <Skeleton className="h-64 rounded-lg" />;
 
   return (
     <Card className="gap-0 overflow-hidden pb-0">

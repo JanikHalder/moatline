@@ -136,7 +136,13 @@ vi.mock("@/lib/api", () => ({
 describe("Dashboard", () => {
   it("lists what needs someone, most urgent first, in plain words", async () => {
     render(<Dashboard />);
-    await screen.findByText("What needs you");
+    // The headline says how much needs someone; the line shows how urgent.
+    await screen.findByText("4 things need you");
+    expect(
+      screen.getByRole("img", {
+        name: "Now: 2, Soon: 2",
+      })
+    ).toBeInTheDocument();
     const titles = screen
       .getAllByRole("listitem")
       .map((li) => li.querySelector("p")?.textContent);

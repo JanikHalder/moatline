@@ -292,7 +292,7 @@ export function SettingsPage() {
       <div className="max-w-3xl space-y-6">
         {pageHeader}
         {[0, 1, 2].map((i) => (
-          <Skeleton key={i} className="h-40 rounded-xl" />
+          <Skeleton key={i} className="h-40 rounded-lg" />
         ))}
       </div>
     );
@@ -1051,7 +1051,7 @@ export function SettingsPage() {
       <ApiKeysCard />
 
       {/* One save for every section: the API takes the whole patch at once. */}
-      <div className="sticky bottom-4 flex items-center justify-end gap-3 rounded-xl border bg-background/95 p-3 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/80">
+      <div className="sticky bottom-4 flex items-center justify-end gap-3 rounded-lg border bg-background/95 p-3 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/80">
         {saved && (
           <span className="flex items-center gap-1.5 text-sm text-success">
             <Check className="size-4" />

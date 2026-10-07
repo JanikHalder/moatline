@@ -114,8 +114,8 @@ const SEVERITIES: Array<keyof SeverityCounts> = [
 function DashboardSkeleton() {
   return (
     <>
-      <Skeleton className="h-48 rounded-xl" />
-      <Skeleton className="h-64 rounded-xl" />
+      <Skeleton className="h-48 rounded-lg" />
+      <Skeleton className="h-64 rounded-lg" />
     </>
   );
 }
@@ -176,13 +176,6 @@ export function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title={tx("Overview")}
-        description={tx(
-          "What needs you, and how your sites and servers are doing."
-        )}
-      />
-
       <NextSteps data={data} />
 
       <Card className="gap-0 overflow-hidden pb-0">

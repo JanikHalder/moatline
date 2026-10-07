@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
-import { ChevronRight, CircleCheck, ListTodo } from "lucide-react";
+import { ChevronRight, CircleCheck } from "lucide-react";
 import {
   api,
   type DashboardData,
@@ -11,7 +11,6 @@ import { explainFinding } from "@/lib/explain";
 import { SEVERITY_RANK } from "@/components/severity-badge";
 import {
   Card,
-  CardAction,
   CardDescription,
   CardHeader,
   CardTitle,
@@ -45,6 +44,12 @@ type Step = {
 };
 
 const URGENCY_RANK: Record<Urgency, number> = { now: 0, soon: 1, later: 2 };
+
+const LINE: Record<Urgency, string> = {
+  now: "bg-destructive",
+  soon: "bg-warning",
+  later: "bg-muted-foreground/35",
+};
 
 const SHOWN = 6;
 
@@ -207,7 +212,7 @@ export function NextSteps({ data }: { data: DashboardData }) {
     return () => clearInterval(id);
   }, []);
 
-  if (findings === null) return <Skeleton className="h-48 rounded-xl" />;
+  if (findings === null) return <Skeleton className="h-48 rounded-lg" />;
 
   const steps = [
     ...incidentSteps(incidents),
@@ -222,47 +227,66 @@ export function NextSteps({ data }: { data: DashboardData }) {
 
   if (steps.length === 0)
     return (
-      <Card className="border-success/30 bg-success/5">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <CircleCheck className="size-5 text-success" />
-            {nothingWatched
-              ? tx("Nothing is watched yet")
-              : tx("All good — nothing to do")}
-          </CardTitle>
-          <CardDescription>
-            {nothingWatched
-              ? tx(
-                  "Add your sites and servers — Moatline then tells you here what needs you."
-                )
-              : tx(
-                  "Moatline keeps checking your sites and servers and tells you here as soon as something needs you."
-                )}
-          </CardDescription>
+      <section className="space-y-3">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div className="space-y-1">
+            <h2 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
+              <CircleCheck className="size-6 text-success" />
+              {nothingWatched
+                ? tx("Nothing is watched yet")
+                : tx("All good — nothing to do")}
+            </h2>
+            <p className="max-w-prose text-sm text-muted-foreground">
+              {nothingWatched
+                ? tx(
+                    "Add your sites and servers — Moatline then tells you here what needs you."
+                  )
+                : tx(
+                    "Moatline keeps checking your sites and servers and tells you here as soon as something needs you."
+                  )}
+            </p>
+          </div>
           {nothingWatched && (
-            <CardAction>
-              <Button asChild size="sm">
-                <Link to="/repos">{tx("Add sites")}</Link>
-              </Button>
-            </CardAction>
+            <Button asChild size="sm">
+              <Link to="/repos">{tx("Add sites")}</Link>
+            </Button>
           )}
-        </CardHeader>
-      </Card>
+        </div>
+        <div
+          aria-hidden
+          className={cn(
+            "h-1.5 rounded-full",
+            nothingWatched ? "bg-border" : "bg-success"
+          )}
+        />
+      </section>
     );
 
   const labels = URGENCY_LABEL();
+  const counts = { now: 0, soon: 0, later: 0 };
+  for (const st of steps) counts[st.urgency]++;
   return (
     <Card className="gap-0 overflow-hidden pb-0">
-      <CardHeader className="border-b pb-4 [.border-b]:pb-4">
-        <CardTitle className="flex items-center gap-2 text-lg">
-          <ListTodo className="size-5" />
-          {tx("What needs you")}
+      <CardHeader className="gap-3 border-b pb-5 [.border-b]:pb-5">
+        <CardTitle className="text-2xl font-semibold tracking-tight">
+          {steps.length === 1
+            ? tx("One thing needs you")
+            : tx("{n} things need you", { n: steps.length })}
         </CardTitle>
         <CardDescription>
-          {steps.length === 1
-            ? tx("One thing, the most urgent first.")
-            : tx("{n} things, the most urgent first.", { n: steps.length })}
+          {[
+            counts.now ? tx("{n} now", { n: counts.now }) : null,
+            counts.soon ? tx("{n} soon", { n: counts.soon }) : null,
+            counts.later
+              ? tx("{n} when you get to it", { n: counts.later })
+              : null,
+          ]
+            .filter(Boolean)
+            .join(", ")}
+          {". "}
+          {tx("The most urgent first.")}
         </CardDescription>
+        <UrgencyLine steps={steps} labels={labels} />
       </CardHeader>
       <ul className="divide-y">
         {shown.map((s) => (
@@ -305,5 +329,36 @@ export function NextSteps({ data }: { data: DashboardData }) {
         </button>
       )}
     </Card>
+  );
+}
+
+/**
+ * The line: one segment per thing that needs someone, most urgent on the
+ * left. Read at a glance — mostly red is a different day from mostly grey.
+ */
+function UrgencyLine({
+  steps,
+  labels,
+}: {
+  steps: Step[];
+  labels: Record<Urgency, string>;
+}) {
+  return (
+    <div
+      className="flex h-1.5 gap-0.5 overflow-hidden rounded-full"
+      role="img"
+      aria-label={(["now", "soon", "later"] as const)
+        .map(
+          (u) =>
+            [labels[u], steps.filter((s) => s.urgency === u).length] as const
+        )
+        .filter(([, n]) => n > 0)
+        .map(([label, n]) => `${label}: ${n}`)
+        .join(", ")}
+    >
+      {steps.map((s) => (
+        <span key={s.key} className={cn("min-w-1 flex-1", LINE[s.urgency])} />
+      ))}
+    </div>
   );
 }

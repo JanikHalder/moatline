@@ -97,7 +97,7 @@ import {
   type ChartConfig,
 } from "@/components/ui/chart";
 import { PageHeader } from "@/components/page-header";
-import { StatCard } from "@/components/stat-card";
+import { StatBand, StatCard } from "@/components/stat-card";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorAlert } from "@/components/error-alert";
 import { DockerDiskCard } from "@/components/docker-disk-card";
@@ -510,7 +510,7 @@ function OverviewTab({
         </Alert>
       ) : null}
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <StatBand>
         <StatCard
           label={host?.cpu ? "CPU" : tx("CPU (load)")}
           icon={Cpu}
@@ -596,7 +596,7 @@ function OverviewTab({
               : undefined
           }
         />
-      </div>
+      </StatBand>
 
       <AtAGlance server={server} onOpen={onOpen} />
 
@@ -2097,10 +2097,10 @@ export function ServerDetail() {
           <>
             <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
               {[0, 1, 2, 3].map((i) => (
-                <Skeleton key={i} className="h-[92px] rounded-xl" />
+                <Skeleton key={i} className="h-[92px] rounded-lg" />
               ))}
             </div>
-            <Skeleton className="h-64 rounded-xl" />
+            <Skeleton className="h-64 rounded-lg" />
           </>
         )}
       </div>

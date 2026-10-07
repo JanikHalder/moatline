@@ -105,7 +105,7 @@ export function AuditPage() {
       />
       {error && <ErrorAlert>{error}</ErrorAlert>}
       {!entries && !error ? (
-        <Skeleton className="h-64 rounded-xl" />
+        <Skeleton className="h-64 rounded-lg" />
       ) : entries && entries.length === 0 ? (
         <Card>
           <EmptyState

@@ -99,7 +99,7 @@ function RunView({
       stop = true;
     };
   }, [runId]);
-  if (!run) return <Skeleton className="h-64 rounded-xl" />;
+  if (!run) return <Skeleton className="h-64 rounded-lg" />;
   const domainStep = run.steps.find((s) => s.key === "domain");
   return (
     <Card>
@@ -334,7 +334,7 @@ export function NewSitePage() {
         {error ? (
           <ErrorAlert>{error}</ErrorAlert>
         ) : (
-          <Skeleton className="h-96 rounded-xl" />
+          <Skeleton className="h-96 rounded-lg" />
         )}
       </div>
     );

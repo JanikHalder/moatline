@@ -82,7 +82,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { PageHeader } from "@/components/page-header";
-import { StatCard } from "@/components/stat-card";
+import { StatBand, StatCard } from "@/components/stat-card";
 import { SeverityBadge } from "@/components/severity-badge";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorAlert } from "@/components/error-alert";
@@ -938,10 +938,10 @@ export function RepoDetail() {
           <Skeleton className="h-4 w-96 max-w-full" />
         </div>
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <Skeleton className="h-44 rounded-xl" />
-          <Skeleton className="h-44 rounded-xl" />
+          <Skeleton className="h-44 rounded-lg" />
+          <Skeleton className="h-44 rounded-lg" />
         </div>
-        <Skeleton className="h-56 rounded-xl" />
+        <Skeleton className="h-56 rounded-lg" />
       </div>
     );
 
@@ -1058,7 +1058,7 @@ export function RepoDetail() {
       {lastScan?.status === "success" && (
         /* Derived from the latest branch scan already on screen below — a
            summary, not another source of truth. */
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <StatBand>
           <StatCard
             label={tx("Security holes")}
             value={lastScan.auditNote ? "—" : vulns.length}
@@ -1110,7 +1110,7 @@ export function RepoDetail() {
                   : tx("not checked yet")
             }
           />
-        </div>
+        </StatBand>
       )}
 
       <RepoVerdict
@@ -2108,7 +2108,7 @@ export function RepoDetail() {
       {/* Checks beyond security holes: useful, but not where anyone has to
           start — one click away instead of a page of cards. */}
       <Collapsible className="space-y-6">
-        <CollapsibleTrigger className="group flex w-full items-center gap-2 rounded-xl border px-5 py-3 text-left hover:bg-muted/40">
+        <CollapsibleTrigger className="group flex w-full items-center gap-2 rounded-lg border px-5 py-3 text-left hover:bg-muted/40">
           <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-90" />
           <span className="font-medium">{tx("More checks")}</span>
           <span className="truncate text-sm text-muted-foreground">

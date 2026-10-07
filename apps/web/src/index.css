@@ -6,86 +6,88 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.141 0.005 285.823);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.141 0.005 285.823);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.141 0.005 285.823);
-  /* Blue rather than zinc-black: it is the one accent colour in the app, so
-     primary actions stand out against the neutral security tables. */
-  --primary: oklch(0.546 0.245 262.881);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.967 0.001 286.375);
-  --secondary-foreground: oklch(0.21 0.006 285.885);
-  --muted: oklch(0.967 0.001 286.375);
-  --muted-foreground: oklch(0.552 0.016 285.938);
-  --accent: oklch(0.967 0.001 286.375);
-  --accent-foreground: oklch(0.21 0.006 285.885);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.985 0 0);
+  /* Moatline's palette, shared with moatline.dev: green-grey paper, ink,
+     forest green. Green means "protected, fine" — it marks state, not
+     buttons; primary actions are ink. Amber and red are the two levels of
+     "needs you". */
+  --radius: 0.5rem;
+  --background: #f2f4f3;
+  --foreground: #12241b;
+  --card: #fbfcfb;
+  --card-foreground: #12241b;
+  --popover: #ffffff;
+  --popover-foreground: #12241b;
+  --primary: #12241b;
+  --primary-foreground: #f2f4f3;
+  --secondary: #e4eae6;
+  --secondary-foreground: #12241b;
+  --muted: #e8ecea;
+  --muted-foreground: #5c6c64;
+  --accent: #e4eae6;
+  --accent-foreground: #12241b;
+  --destructive: #b3261e;
+  --destructive-foreground: #ffffff;
   /* Not part of stock shadcn: severity and status badges rely on them. */
-  --success: oklch(0.527 0.154 150.069);
-  --success-foreground: oklch(0.985 0 0);
-  --warning: oklch(0.666 0.179 58.318);
-  --warning-foreground: oklch(0.21 0.006 285.885);
-  --border: oklch(0.92 0.004 286.32);
-  --input: oklch(0.92 0.004 286.32);
-  --ring: oklch(0.546 0.245 262.881);
-  --chart-1: oklch(0.577 0.245 27.325);
-  --chart-2: oklch(0.646 0.222 41.116);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.6 0.118 184.704);
-  --chart-5: oklch(0.552 0.016 285.938);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.141 0.005 285.823);
-  --sidebar-primary: oklch(0.546 0.245 262.881);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.967 0.001 286.375);
-  --sidebar-accent-foreground: oklch(0.21 0.006 285.885);
-  --sidebar-border: oklch(0.92 0.004 286.32);
-  --sidebar-ring: oklch(0.546 0.245 262.881);
+  --success: #0b6b47;
+  --success-foreground: #ffffff;
+  --warning: #a86400;
+  --warning-foreground: #12241b;
+  --border: #d3dbd6;
+  --input: #c6d0ca;
+  --ring: #0b6b47;
+  --chart-1: #b3261e;
+  --chart-2: #b86e00;
+  --chart-3: #8c7a14;
+  --chart-4: #0b6b47;
+  --chart-5: #6b7a72;
+  --sidebar: #e8ecea;
+  --sidebar-foreground: #12241b;
+  --sidebar-primary: #0b6b47;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #dce4df;
+  --sidebar-accent-foreground: #12241b;
+  --sidebar-border: #d3dbd6;
+  --sidebar-ring: #0b6b47;
 }
 
 .dark {
-  --background: oklch(0.141 0.005 285.823);
-  --foreground: oklch(0.985 0 0);
+  --background: #0f1813;
+  --foreground: #e3ebe6;
   /* Cards sit a step above the page so they still read as surfaces. */
-  --card: oklch(0.18 0.006 285.885);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.21 0.006 285.885);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.623 0.214 259.815);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.274 0.006 286.033);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.274 0.006 286.033);
-  --muted-foreground: oklch(0.705 0.015 286.067);
-  --accent: oklch(0.274 0.006 286.033);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --destructive-foreground: oklch(0.985 0 0);
-  --success: oklch(0.723 0.219 149.579);
-  --success-foreground: oklch(0.141 0.005 285.823);
-  --warning: oklch(0.769 0.188 70.08);
-  --warning-foreground: oklch(0.141 0.005 285.823);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.623 0.214 259.815);
-  --chart-1: oklch(0.704 0.191 22.216);
-  --chart-2: oklch(0.75 0.183 55.934);
-  --chart-3: oklch(0.795 0.184 86.047);
-  --chart-4: oklch(0.696 0.17 162.48);
-  --chart-5: oklch(0.705 0.015 286.067);
-  --sidebar: oklch(0.18 0.006 285.885);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.623 0.214 259.815);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.274 0.006 286.033);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.623 0.214 259.815);
+  --card: #15201a;
+  --card-foreground: #e3ebe6;
+  --popover: #1a2720;
+  --popover-foreground: #e3ebe6;
+  --primary: #e3ebe6;
+  --primary-foreground: #0f1813;
+  --secondary: #213029;
+  --secondary-foreground: #e3ebe6;
+  --muted: #1d2b24;
+  --muted-foreground: #9aaba2;
+  --accent: #223229;
+  --accent-foreground: #e3ebe6;
+  --destructive: #f0857c;
+  --destructive-foreground: #0f1813;
+  --success: #4cc290;
+  --success-foreground: #0f1813;
+  --warning: #e0a03a;
+  --warning-foreground: #0f1813;
+  --border: #2a3a31;
+  --input: #34463c;
+  --ring: #4cc290;
+  --chart-1: #f0857c;
+  --chart-2: #e0a03a;
+  --chart-3: #c9b55a;
+  --chart-4: #4cc290;
+  --chart-5: #7e8e85;
+  --sidebar: #121d17;
+  --sidebar-foreground: #e3ebe6;
+  --sidebar-primary: #4cc290;
+  --sidebar-primary-foreground: #0f1813;
+  --sidebar-accent: #1f2d25;
+  --sidebar-accent-foreground: #e3ebe6;
+  --sidebar-border: #2a3a31;
+  --sidebar-ring: #4cc290;
 }
 
 @theme inline {
@@ -103,10 +105,10 @@
     }
   }
   --font-sans:
-    "Inter var", "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
-    Roboto, sans-serif;
+    "IBM Plex Sans Variable", "IBM Plex Sans", ui-sans-serif, system-ui,
+    -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono:
-    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);

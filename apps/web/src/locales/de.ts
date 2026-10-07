@@ -2726,4 +2726,10 @@ export const de: Record<string, string> = {
   Plan: "Tarif",
   "not confirmed": "nicht bestätigt",
   "Could not load": "Konnte nicht geladen werden",
+  "One thing needs you": "Eine Sache braucht dich",
+  "{n} things need you": "{n} Dinge brauchen dich",
+  "{n} now": "{n} jetzt",
+  "{n} soon": "{n} bald",
+  "{n} when you get to it": "{n} wenn du Zeit hast",
+  "The most urgent first.": "Das Dringendste zuerst.",
 };
