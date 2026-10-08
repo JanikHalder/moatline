@@ -14,7 +14,11 @@ FAIL2BAN_FINDTIME="10m"
 FAIL2BAN_MAXRETRY=3
 EXTRA_PORTS=()
 TRUSTED_IPS=()
-# Same files as the Moatline agent (pc-agent --trust-ip).
+SKIP_SWAP=false
+# Empty = size from RAM (see recommended_swap_mb). Examples: 2G, 4096M.
+SWAP_SIZE=""
+SWAPFILE="/swapfile"
+# Same files as the monitoring agent (pc-agent --trust-ip).
 TRUSTED_FAIL2BAN="/etc/fail2ban/jail.d/trusted-ips.local"
 TRUSTED_CROWDSEC="/etc/crowdsec/parsers/s02-enrich/trusted-ips.yaml"
 
@@ -22,9 +26,10 @@ usage() {
     cat << 'EOF'
 Usage: sudo ./harden-server.sh [OPTIONS]
 
-Secures the server: UFW firewall, SSH key-only auth (optional), fail2ban.
+Secures the server: UFW firewall, SSH key-only auth (optional), fail2ban, swap.
 Safe for existing servers: UFW not installed → install and set desired ports; UFW
 installed with no rules → add desired ports; UFW already has rules → show only.
+Swap: none active → create /swapfile from RAM size; already active → show only.
 SSH: if key passed, add and disable password; if key present, disable password;
 if no key, leave password login enabled.
 
@@ -33,7 +38,9 @@ OPTIONS:
   --key-file /path/to/key.pub Use public key from file (disables password login)
   --user USER                 User for authorized_keys (default: $SUDO_USER or root)
   --ssh-port PORT             SSH port (default: 22). Allow this port in firewall.
-  --skip-ssh-key              Only set up firewall and fail2ban; do not change SSH auth
+  --skip-ssh-key              Only set up firewall, fail2ban and swap; do not change SSH auth
+  --skip-swap                 Do not create or change swap
+  --swap-size SIZE            Swap file size (default: from RAM). Examples: 2G, 4096M
   --allow-port PORT[,PORT...] Allow extra TCP port(s) in UFW (standard: 80, 443)
   --bantime TIME              fail2ban bantime (default: 1w). Examples: 1h, 1d, 1w
   --maxretry N                fail2ban maxretry (default: 3)
@@ -46,6 +53,7 @@ Examples:
   sudo ./harden-server.sh --allow-port 3000
   sudo ./harden-server.sh --key "$(cat ~/.ssh/id_ed25519.pub)" --ssh-port 2222
   sudo ./harden-server.sh --skip-ssh-key --trust-ip 203.0.113.7
+  sudo ./harden-server.sh --swap-size 2G
 EOF
 }
 
@@ -367,6 +375,97 @@ enable_automatic_security_updates() {
     fi
 }
 
+# ≤2 GiB RAM → 2× RAM; ≤8 GiB → 1× RAM; above that a fixed 4 GiB is enough
+# headroom for builds and spikes without eating the disk on large hosts.
+recommended_swap_mb() {
+    local ram_kb ram_mb
+    ram_kb="$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)"
+    ram_mb=$((ram_kb / 1024))
+    if ((ram_mb <= 2048)); then
+        echo $((ram_mb * 2))
+    elif ((ram_mb <= 8192)); then
+        echo "$ram_mb"
+    else
+        echo 4096
+    fi
+}
+
+# Accepts 2G, 4096M or a bare MiB number.
+parse_swap_mb() {
+    local s="$1"
+    if [[ "$s" =~ ^([0-9]+)[Gg]$ ]]; then
+        echo $((BASH_REMATCH[1] * 1024))
+    elif [[ "$s" =~ ^([0-9]+)[Mm]$ ]]; then
+        echo "${BASH_REMATCH[1]}"
+    elif [[ "$s" =~ ^[0-9]+$ ]]; then
+        echo "$s"
+    else
+        return 1
+    fi
+}
+
+setup_swap() {
+    if [[ "$SKIP_SWAP" == true ]]; then
+        echo "[*] Swap übersprungen (--skip-swap)."
+        return 0
+    fi
+
+    if swapon --show --noheadings 2>/dev/null | grep -q .; then
+        echo "[*] Swap ist bereits aktiv – nur Anzeige (keine Änderung):"
+        swapon --show
+        return 0
+    fi
+
+    local size_mb
+    if [[ -n "$SWAP_SIZE" ]]; then
+        if ! size_mb="$(parse_swap_mb "$SWAP_SIZE")"; then
+            echo "[!] --swap-size ungültig (z.B. 2G oder 4096M): $SWAP_SIZE — Swap unverändert." >&2
+            return 0
+        fi
+    else
+        size_mb="$(recommended_swap_mb)"
+    fi
+    if ((size_mb < 256)); then
+        echo "[!] Swap-Größe ${size_mb} MiB ist zu klein — minimum 256 MiB. Swap unverändert." >&2
+        return 0
+    fi
+
+    local avail_kb need_kb
+    avail_kb="$(df -Pk / | awk 'NR==2 {print $4}')"
+    # Leave ~1 GiB free on / after creating the file.
+    need_kb=$((size_mb * 1024 + 1024 * 1024))
+    if [[ -n "$avail_kb" ]] && ((avail_kb < need_kb)); then
+        echo "[!] Nicht genug freier Speicher auf / für ${size_mb} MiB Swap (plus 1 GiB Reserve) — Swap unverändert." >&2
+        return 0
+    fi
+
+    echo "[*] Swap einrichten: ${size_mb} MiB in $SWAPFILE ..."
+    if [[ -e "$SWAPFILE" ]]; then
+        # Leftover from a previous attempt — replace rather than risk a half file.
+        swapoff "$SWAPFILE" 2>/dev/null || true
+        rm -f "$SWAPFILE"
+    fi
+
+    if ! fallocate -l "${size_mb}M" "$SWAPFILE" 2>/dev/null; then
+        dd if=/dev/zero of="$SWAPFILE" bs=1M count="$size_mb" status=progress
+    fi
+    chmod 600 "$SWAPFILE"
+    mkswap "$SWAPFILE" >/dev/null
+    swapon "$SWAPFILE"
+
+    if ! grep -qE "^[[:space:]]*${SWAPFILE}[[:space:]]" /etc/fstab 2>/dev/null; then
+        echo "$SWAPFILE none swap sw 0 0" >> /etc/fstab
+    fi
+
+    # Prefer RAM; swap is a safety net for spikes and builds, not a second heap.
+    sysctl -w vm.swappiness=10 >/dev/null
+    mkdir -p /etc/sysctl.d
+    echo "vm.swappiness=10" > /etc/sysctl.d/99-harden-server-swap.conf
+
+    swapon --show
+    echo "[*] Swap aktiv: ${size_mb} MiB ($SWAPFILE), swappiness=10."
+}
+
 main() {
     local args=()
     while [[ $# -gt 0 ]]; do
@@ -390,6 +489,14 @@ main() {
             --skip-ssh-key)
                 SKIP_SSH_KEY=true
                 shift
+                ;;
+            --skip-swap)
+                SKIP_SWAP=true
+                shift
+                ;;
+            --swap-size)
+                SWAP_SIZE="${2:-}"
+                shift 2
                 ;;
             --allow-port)
                 local ports="${2:-}"
@@ -443,6 +550,7 @@ main() {
     setup_fail2ban
     trust_ips_in_crowdsec
     enable_automatic_security_updates
+    setup_swap
 
     echo ""
     echo "[*] Grundhärtung abgeschlossen. Prüfe Fail2ban-Status: fail2ban-client status sshd"
