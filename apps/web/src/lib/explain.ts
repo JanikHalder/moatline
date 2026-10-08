@@ -416,21 +416,26 @@ function host(f: F): Explanation | null {
         tx("{app} crashed because it ran out of memory", { app }),
         tx("Linux stopped it to protect the server."),
         tx(
-          "Give it a higher memory limit in Dokploy or Coolify, or have the developers look for a memory leak."
-        )
+          "Raise the memory limit, set NODE_OPTIONS=--max-old-space-size to ~75% of it, and check the Next.js checklist: unbounded caches, Payload/media in RAM, image optimization. A heap snapshot shows what grew."
+        ),
+        { fix: redeploy }
       );
     if (kind === "limit")
       return e(
         tx("{app} is close to its memory limit", { app }),
         tx("At the limit it is stopped and restarted."),
-        tx("Raise its memory limit in Dokploy or Coolify.")
+        tx(
+          "Raise the limit in Dokploy or Coolify, or shrink usage — set NODE_OPTIONS=--max-old-space-size so Node dies before the host does. See Memory on the repository or Apps tab."
+        )
       );
     if (kind === "memory")
       return e(
         tx("{app} uses much more memory than usual", { app }),
-        tx("This often points to a memory leak."),
         tx(
-          "A redeploy frees the memory for now. If it keeps growing, tell the developers."
+          "Growing between deploys usually means a leak (caches, listeners, Payload). A Next.js app often settles after warm-up — a line that only climbs is the problem."
+        ),
+        tx(
+          "Redeploy frees memory for now. Then set a limit + NODE_OPTIONS, open the memory chart, and take a heap snapshot if it climbs again."
         ),
         { fix: redeploy }
       );
@@ -438,7 +443,9 @@ function host(f: F): Explanation | null {
       return e(
         tx("{app} takes a large share of the server's memory", { app }),
         tx("Without a limit it can starve the other apps on the server."),
-        tx("Set a memory limit for it in Dokploy or Coolify.")
+        tx(
+          "Set a memory limit (and NODE_OPTIONS=--max-old-space-size at ~75% of it) in Dokploy or Coolify. Then check why the Next.js/Node process needs that much."
+        )
       );
     if (kind === "cpu")
       return e(

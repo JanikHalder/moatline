@@ -289,6 +289,10 @@ ${posts.map((p) => `- [${p.title}](${p.url}): ${p.description}`).join("\n")}
               text: "Deploys, uptime, self-healing",
               link: "/guide/operations",
             },
+            {
+              text: "High memory in Next.js",
+              link: "/guide/nextjs-memory",
+            },
             { text: "Servers and platforms", link: "/guide/servers" },
             { text: "Versions and new sites", link: "/guide/overview" },
             { text: "Upgrading a server's OS", link: "/guide/os-upgrade" },

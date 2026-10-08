@@ -932,6 +932,28 @@ export const de: Record<string, string> = {
     "Regeln für unbeaufsichtigte Security-Fixes und was Coding-Agents über MCP starten dürfen. Jede Aktion landet im Audit-Log.",
   "Save automation policy": "Automations-Richtlinie speichern",
   "API key updated": "API-Key aktualisiert",
+  "above usual": "über dem Üblichen",
+  "RSS of the linked container over the last 24 hours. A Next.js app usually settles after warm-up; a line that only climbs between deploys is a leak.":
+    "RSS des verknüpften Containers der letzten 24 Stunden. Eine Next.js-App beruhigt sich meist nach dem Warmlaufen; eine Linie, die zwischen Deploys nur steigt, ist ein Leak.",
+  "Usual (7 days)": "Üblich (7 Tage)",
+  "No memory samples yet — the server agent needs version 1.6.0+ and a few reports.":
+    "Noch keine Memory-Samples — der Server-Agent braucht Version 1.6.0+ und ein paar Reports.",
+  "Set a memory limit and NODE_OPTIONS=--max-old-space-size at about 75% of it.":
+    "Setze ein Speicherlimit und NODE_OPTIONS=--max-old-space-size auf etwa 75 % davon.",
+  "Check unbounded fetch/ISR caches, in-memory Maps, Payload media, and image optimization concurrency.":
+    "Prüfe unbegrenzte Fetch/ISR-Caches, In-Memory-Maps, Payload-Media und die Parallelität der Bildoptimierung.",
+  "Heap snapshot: node --inspect → Chrome DevTools → Memory, before and after traffic.":
+    "Heap-Snapshot: node --inspect → Chrome DevTools → Memory, vor und nach Traffic.",
+  "Growing between deploys usually means a leak (caches, listeners, Payload). A Next.js app often settles after warm-up — a line that only climbs is the problem.":
+    "Wachstum zwischen Deploys bedeutet meist einen Leak (Caches, Listener, Payload). Eine Next.js-App beruhigt sich oft nach dem Warmlaufen — eine Linie, die nur steigt, ist das Problem.",
+  "Redeploy frees memory for now. Then set a limit + NODE_OPTIONS, open the memory chart, and take a heap snapshot if it climbs again.":
+    "Ein Redeploy gibt Speicher vorerst frei. Danach Limit + NODE_OPTIONS setzen, Memory-Chart öffnen und bei erneutem Anstieg einen Heap-Snapshot machen.",
+  "Raise the memory limit, set NODE_OPTIONS=--max-old-space-size to ~75% of it, and check the Next.js checklist: unbounded caches, Payload/media in RAM, image optimization. A heap snapshot shows what grew.":
+    "Speicherlimit erhöhen, NODE_OPTIONS=--max-old-space-size auf ~75 % setzen und die Next.js-Checkliste prüfen: unbegrenzte Caches, Payload/Media im RAM, Bildoptimierung. Ein Heap-Snapshot zeigt, was gewachsen ist.",
+  "Raise the limit in Dokploy or Coolify, or shrink usage — set NODE_OPTIONS=--max-old-space-size so Node dies before the host does. See Memory on the repository or Apps tab.":
+    "Limit in Dokploy oder Coolify erhöhen oder Verbrauch senken — NODE_OPTIONS=--max-old-space-size setzen, damit Node stirbt, bevor der Host leidet. Siehe Memory auf dem Repository oder dem Apps-Tab.",
+  "Set a memory limit (and NODE_OPTIONS=--max-old-space-size at ~75% of it) in Dokploy or Coolify. Then check why the Next.js/Node process needs that much.":
+    "Speicherlimit (und NODE_OPTIONS=--max-old-space-size bei ~75 %) in Dokploy oder Coolify setzen. Dann prüfen, warum der Next.js/Node-Prozess so viel braucht.",
   "Save key": "Key speichern",
   "Edit {name}": "{name} bearbeiten",
   "Updated API key": "API-Key geändert",

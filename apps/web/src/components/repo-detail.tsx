@@ -139,6 +139,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { copyFindings, downloadFindings } from "@/lib/findings-export";
 import { RepoVerdict } from "@/components/repo-verdict";
+import { RepoMemoryCard } from "@/components/repo-memory-card";
 import { useSystemMode } from "@/lib/system-mode";
 import { tx } from "@/lib/i18n";
 
@@ -2071,6 +2072,14 @@ export function RepoDetail() {
       />
 
       {repo.liveUrl && <IncidentsCard repoId={repo.id} />}
+
+      {repo.serverId && repo.dokployAppName && (
+        <RepoMemoryCard
+          serverId={repo.serverId}
+          appName={repo.dokployAppName}
+          isNext={!!repo.stack?.packages?.next}
+        />
+      )}
 
       <Card className="gap-0 overflow-hidden pb-0">
         <CardHeader className="border-b pb-4 [.border-b]:pb-4">

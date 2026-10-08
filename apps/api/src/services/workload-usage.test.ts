@@ -51,6 +51,7 @@ describe("usageFindings", () => {
       title: "shop uses 4.1× its usual memory",
     });
     expect(f!.detail).toContain("max-old-space-size");
+    expect(f!.detail).toContain("heap snapshot");
   });
 
   it("waits for a day of history before calling anything unusual", () => {

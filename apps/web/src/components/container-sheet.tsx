@@ -44,7 +44,7 @@ const chartConfig = {
   memBytes: { label: "Memory", color: "var(--chart-4)" },
 } satisfies ChartConfig;
 
-function MemoryChart({
+export function MemoryChart({
   points,
   limit,
   usual,

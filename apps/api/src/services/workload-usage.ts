@@ -68,8 +68,9 @@ export function formatMem(bytes: number): string {
     : `${Math.round(bytes / MIB)} MB`;
 }
 
-const NODE_HINT =
-  "For a Next.js/Node app: set a memory limit in Dokploy (Advanced → Resources) and NODE_OPTIONS=--max-old-space-size at about 75% of it, so a leak restarts the app instead of starving the server. A heap snapshot (node --inspect, Chrome DevTools → Memory) shows what grows.";
+/** Remediations appended to container memory findings (Next.js / Node). */
+export const NODE_HINT =
+  "For a Next.js/Node app: set a memory limit in Dokploy or Coolify (Resources) and NODE_OPTIONS=--max-old-space-size at about 75% of that limit, so a leak restarts the app instead of starving the server. Typical causes: unbounded fetch/ISR cache, large in-memory Maps, Payload media kept in RAM, too many concurrent image optimizations, or a module that loads once and never frees. Diagnose: node --inspect (or NODE_OPTIONS=--inspect=0.0.0.0:9229), Chrome DevTools → Memory → heap snapshot before vs after traffic; or redeploy and watch whether RSS climbs again between deploys.";
 
 /** Enough history to call something unusual: one day of reports. */
 const MIN_SAMPLES = 288;

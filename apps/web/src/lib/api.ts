@@ -1278,6 +1278,12 @@ export type Repo = LiveState & {
   packageManager: "npm" | "pnpm" | "yarn" | null;
   verifyMode: VerifyMode;
   serverId: string | null;
+  /** Framework versions from the last lockfile scan. */
+  stack?: {
+    packages?: Partial<
+      Record<"payload" | "next" | "react", { declared: string | null; installed: string | null }>
+    >;
+  } | null;
 };
 
 /** A repository one of the organization's Git tokens can read. */

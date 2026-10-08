@@ -338,6 +338,19 @@ installs it from nixpkgs. Elsewhere, put `nuclei` on the PATH or set
 - Uninstall: `sudo python3 /usr/local/lib/pc-agent/pc-agent.py uninstall`,
   then revoke the token.
 
+## High memory (Next.js / Node)
+
+Per-app RSS is recorded every agent report. Findings:
+
+- near the container memory limit (`usage:limit`)
+- OOM-killed and restarted (`usage:oom`)
+- ~2× the 7-day median (`usage:memory`) — often a leak
+- large share of host RAM with no limit (`usage:share`)
+
+On a linked repository, the **Memory** card shows the 24h chart and a short
+checklist. Full playbook: [High memory in Next.js](../site/guide/nextjs-memory.md)
+(site: `/guide/nextjs-memory`).
+
 ## MCP (AI assistants)
 
 `POST /api/mcp` speaks MCP over Streamable HTTP (stateless JSON-RPC, no
