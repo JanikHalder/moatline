@@ -62,10 +62,23 @@ const reposIndexRoute = createRoute({
   component: ReposList,
 });
 
+const REPO_TABS = [
+  "overview",
+  "packages",
+  "live",
+  "checks",
+  "branches",
+] as const;
+
 const repoIdRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/repos/$repoId",
   component: RepoDetail,
+  validateSearch: (
+    search: Record<string, unknown>
+  ): { tab?: (typeof REPO_TABS)[number] } => ({
+    tab: REPO_TABS.find((t) => t === search.tab),
+  }),
 });
 
 const serversIndexRoute = createRoute({

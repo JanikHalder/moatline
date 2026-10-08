@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { compareUrl, hostLabel } from "@/lib/git-host";
 import { toast } from "sonner";
-import { useParams, Link, useNavigate } from "@tanstack/react-router";
+import {
+  useParams,
+  Link,
+  useNavigate,
+  useSearch,
+} from "@tanstack/react-router";
 import {
   api,
   type Vulnerability,
@@ -70,6 +75,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
@@ -335,9 +341,20 @@ function repoSlug(url: string | undefined): string | null {
   return m ? `${m[1]}/${m[2]}`.toLowerCase() : null;
 }
 
+type RepoTab = "overview" | "packages" | "live" | "checks" | "branches";
+
 export function RepoDetail() {
   const { repoId } = useParams({ from: "/repos/$repoId" });
-  const navigate = useNavigate();
+  const { tab = "overview" } = useSearch({ from: "/repos/$repoId" });
+  const navigate = useNavigate({ from: "/repos/$repoId" });
+  const setTab = useCallback(
+    (t: RepoTab) =>
+      navigate({
+        search: { tab: t === "overview" ? undefined : t },
+        replace: true,
+      }),
+    [navigate]
+  );
   const [repo, setRepo] = useState<Repo | null>(null);
   const [scans, setScans] = useState<Scan[]>([]);
   const [findings, setFindings] = useState<Finding[]>([]);
@@ -1056,174 +1073,6 @@ export function RepoDetail() {
         }
       />
 
-      {lastScan?.status === "success" && (
-        /* Derived from the latest branch scan already on screen below — a
-           summary, not another source of truth. */
-        <StatBand>
-          <StatCard
-            label={tx("Security holes")}
-            value={lastScan.auditNote ? "—" : vulns.length}
-            tone={urgentCount > 0 ? "destructive" : "warning"}
-            description={
-              lastScan.auditNote
-                ? tx("audit did not run")
-                : urgentCount > 0
-                  ? tx("{n} critical or serious", { n: urgentCount })
-                  : tx("none critical or high")
-            }
-          />
-          <StatCard
-            label={tx("Outdated packages")}
-            value={outdatedCount}
-            tone="warning"
-            description={tx("of {n} packages", { n: findings.length })}
-          />
-          <StatCard
-            label={tx("Unused packages")}
-            value={unusedCount}
-            description={tx("not imported anywhere")}
-          />
-          <StatCard
-            label={tx("Live site")}
-            value={
-              !repo.liveUrl
-                ? "—"
-                : repo.liveStatus === "up"
-                  ? tx("Online")
-                  : repo.liveStatus === "down"
-                    ? tx("Offline")
-                    : "—"
-            }
-            tone={
-              repo.liveStatus === "up"
-                ? "success"
-                : repo.liveStatus === "down"
-                  ? "destructive"
-                  : "default"
-            }
-            description={
-              !repo.liveUrl
-                ? tx("no live URL set")
-                : repo.liveCheckedAt
-                  ? tx("checked {when}", {
-                      when: formatRelative(repo.liveCheckedAt) ?? "",
-                    })
-                  : tx("not checked yet")
-            }
-          />
-        </StatBand>
-      )}
-
-      <RepoVerdict
-        repo={repo}
-        lastScan={lastScan ?? null}
-        vulns={vulns}
-        onFix={startFix}
-        onScan={startScan}
-        fixing={fixing}
-        scanning={scanning}
-        fixRunning={
-          updateRun?.kind === "security" &&
-          !["failed", "closed"].includes(updateRun.status)
-        }
-      />
-
-      {lastScan?.status === "success" && (
-        <Card className="gap-0 overflow-hidden pb-0">
-          <CardHeader className="border-b pb-4 [.border-b]:pb-4">
-            <CardTitle>{tx("Known security holes")}</CardTitle>
-            <CardDescription>
-              {tx(
-                "In the packages this site uses, from the public advisory databases. Most disappear with an update."
-              )}
-            </CardDescription>
-          </CardHeader>
-          {lastScan?.auditNote ? (
-            // An audit that could not run must never look like a clean bill
-            // of health – that is the one mistake this list cannot afford.
-            <div className="p-6">
-              <Alert variant="warning">
-                <AlertTriangle />
-                <AlertTitle>
-                  {tx("No vulnerability data for this scan")}
-                </AlertTitle>
-                <AlertDescription>{lastScan.auditNote}</AlertDescription>
-              </Alert>
-            </div>
-          ) : vulns.length === 0 ? (
-            <EmptyState
-              icon={ShieldCheck}
-              title={tx("No known security holes.")}
-              className="py-8 md:py-8"
-            />
-          ) : (
-            <ul className="divide-y">
-              {vulns.map((v) => (
-                <li key={v.id} className="flex items-start gap-3 px-6 py-3">
-                  <SeverityBadge severity={v.severity} />
-                  <div className="min-w-0 flex-1 space-y-1">
-                    <p className="text-sm">
-                      <span className="font-mono font-medium">
-                        {v.packageName}
-                      </span>
-                      {v.title && (
-                        <span className="text-muted-foreground">
-                          {" — "}
-                          {v.title}
-                        </span>
-                      )}
-                    </p>
-                    <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-                      {v.fixAvailable ? (
-                        <span className="font-medium text-foreground">
-                          {v.patchedVersion
-                            ? tx("Fixed by updating to {version}", {
-                                version: v.patchedVersion,
-                              })
-                            : tx("Fixed by an update")}
-                        </span>
-                      ) : (
-                        <span>{tx("No fix exists yet")}</span>
-                      )}
-                      {v.fixIsSemverMajor && (
-                        <Badge
-                          variant="warning"
-                          title={tx(
-                            "A major version: the site may need small changes to work with it."
-                          )}
-                        >
-                          {tx("major update")}
-                        </Badge>
-                      )}
-                      <span aria-hidden>·</span>
-                      <span>
-                        {v.isDirect
-                          ? tx("in your package.json")
-                          : tx("comes in through another package")}
-                      </span>
-                      {v.url && (
-                        <>
-                          <span aria-hidden>·</span>
-                          <a
-                            href={v.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex items-center gap-0.5 text-primary hover:underline"
-                          >
-                            {v.ghsaId ?? v.cveId ?? tx("Details")}
-                            <ExternalLink className="size-3" />
-                          </a>
-                        </>
-                      )}
-                    </p>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-      )}
-
       {updateRun && (
         <Card>
           <CardHeader>
@@ -1405,7 +1254,7 @@ export function RepoDetail() {
             )}
             {updateRun.kind === "security" && updateRun.securitySummary && (
               /* A green build proves it compiles. This says whether the
-                 advisory is gone — the only claim worth making here. */
+             advisory is gone — the only claim worth making here. */
               <Alert
                 variant={updateRun.securityVerified ? "success" : "warning"}
               >
@@ -1424,7 +1273,7 @@ export function RepoDetail() {
             )}
             {updateRun.logOutput && (
               /* The log is written after every phase, so this fills in while
-                 the run is still going instead of only at the end. */
+             the run is still going instead of only at the end. */
               <Collapsible
                 open={logOpen}
                 onOpenChange={setLogOpen}
@@ -1460,697 +1309,1024 @@ export function RepoDetail() {
         </Card>
       )}
 
-      {(lastScan?.status === "success" || lastScan?.status === "failed") && (
-        <Card className="gap-0 overflow-hidden pb-0">
-          <CardHeader className="border-b pb-4 [.border-b]:pb-4">
-            <CardTitle>{tx("Package findings")}</CardTitle>
-            <CardDescription>
-              {tx(
-                "Every dependency in package.json against its latest release."
-              )}
-            </CardDescription>
-          </CardHeader>
-          {findings.length === 0 ? (
-            <EmptyState
-              icon={PackageSearch}
-              title={
-                lastScan.status === "success"
-                  ? tx(
-                      "No dependencies in package.json or scan returned no results."
-                    )
-                  : tx("Scan failed. Check the error above.")
-              }
-              className="py-8 md:py-8"
-            />
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-muted/40 hover:bg-muted/40">
-                  <TableHead className="pl-6">{tx("Package")}</TableHead>
-                  <TableHead className="hidden @2xl/main:table-cell">
-                    {tx("Current")}
-                  </TableHead>
-                  <TableHead className="hidden @2xl/main:table-cell">
-                    {tx("Latest")}
-                  </TableHead>
-                  <TableHead className="hidden @2xl/main:table-cell">
-                    {tx("Status")}
-                  </TableHead>
-                  <TableHead className="hidden pr-6 @2xl/main:table-cell">
-                    {tx("Usage")}
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {findings.map((f) => (
-                  <TableRow key={f.packageName}>
-                    <TableCell className="pr-6 pl-6 whitespace-normal @2xl/main:pr-2 @2xl/main:whitespace-nowrap">
-                      <span className="font-mono break-all @2xl/main:break-normal">
-                        {f.packageName}
-                      </span>
-                      {f.isDevDependency && (
-                        <Badge variant="secondary" className="ml-2">
-                          dev
-                        </Badge>
-                      )}
-                      {/* Phones: versions, status and usage on one line. */}
-                      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs @2xl/main:hidden">
-                        <span className="tabular font-mono text-muted-foreground">
-                          {f.currentVersion} → {f.latestVersion}
-                        </span>
-                        <Badge
-                          variant={statusVariant(
-                            f.currentVersion,
-                            f.latestVersion
-                          )}
-                        >
-                          {f.currentVersion === f.latestVersion
-                            ? tx("up to date")
-                            : tx("outdated")}
-                        </Badge>
-                        {f.unused && (
-                          <Badge variant="destructive-soft">
-                            {tx("unused")}
-                          </Badge>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell className="tabular hidden font-mono text-xs @2xl/main:table-cell">
-                      {f.currentVersion}
-                    </TableCell>
-                    <TableCell className="tabular hidden font-mono text-xs @2xl/main:table-cell">
-                      {f.latestVersion}
-                    </TableCell>
-                    <TableCell className="hidden @2xl/main:table-cell">
-                      <Badge
-                        variant={statusVariant(
-                          f.currentVersion,
-                          f.latestVersion
-                        )}
-                      >
-                        {f.currentVersion === f.latestVersion
-                          ? tx("up to date")
-                          : tx("outdated")}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="hidden pr-6 @2xl/main:table-cell">
-                      {f.unused ? (
-                        <Badge variant="destructive-soft">{tx("unused")}</Badge>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">
-                          {tx("used")}
-                        </span>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </Card>
-      )}
-
-      <Card>
-        <CardHeader>
-          <CardTitle>{tx("Latest scan")}</CardTitle>
-          <CardDescription>
-            {lastScan ? (
-              <span className="flex flex-wrap items-center gap-2">
-                <Badge
-                  variant={
-                    lastScan.status === "success"
-                      ? "success"
-                      : lastScan.status === "failed"
-                        ? "destructive-soft"
-                        : "secondary"
-                  }
-                >
-                  {lastScan.status === "running"
-                    ? tx("Running…")
-                    : lastScan.status === "pending"
-                      ? tx("Pending…")
-                      : lastScan.status === "success"
-                        ? tx("done")
-                        : tx(lastScan.status)}
-                </Badge>
-                {new Date(lastScan.startedAt).toLocaleString()}
-                {" · "}
-                <span className="font-mono">{branch}</span>
-              </span>
-            ) : (
-              tx("Dependencies and advisories on the configured branch.")
+      <Tabs value={tab} onValueChange={(v) => setTab(v as RepoTab)}>
+        <TabsList className="max-w-full justify-start overflow-x-auto">
+          <TabsTrigger value="overview">{tx("Overview")}</TabsTrigger>
+          <TabsTrigger value="packages">
+            {tx("Packages")}
+            {(urgentCount > 0 || vulns.length > 0) && (
+              <Badge
+                variant={urgentCount > 0 ? "destructive-soft" : "secondary"}
+                className="ml-1 px-1.5"
+              >
+                {vulns.length}
+              </Badge>
             )}
-          </CardDescription>
-          <CardAction className="flex flex-wrap gap-2 sm:justify-end">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={startScan}
-              disabled={scanning || isScanInProgress}
-            >
-              {scanning || isScanInProgress ? <Spinner /> : <RefreshCw />}
-              {scanning
-                ? tx("Starting…")
-                : isScanInProgress
-                  ? tx("Scan running…")
-                  : tx("Scan now")}
-            </Button>
-            <Button
-              size="sm"
-              onClick={() => setUpdateOpen(true)}
-              disabled={updating}
-            >
-              {tx("Update packages")}
-            </Button>
-          </CardAction>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {lastScan ? (
-            <>
-              {(lastScan.status === "pending" ||
-                lastScan.status === "running" ||
-                lastScan.status === "success") && (
-                <div className="space-y-3">
-                  {lastScan.status !== "success" && (
-                    <Progress
-                      value={percentDone(scanSteps)}
-                      aria-label={tx("Scan progress")}
+          </TabsTrigger>
+          <TabsTrigger value="live">
+            {tx("Live")}
+            {liveFindings && liveFindings.length > 0 && (
+              <Badge variant="secondary" className="ml-1 px-1.5">
+                {liveFindings.length}
+              </Badge>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="checks">{tx("Checks")}</TabsTrigger>
+          <TabsTrigger value="branches">{tx("Branches")}</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="overview" className="space-y-6 pt-4">
+          {lastScan?.status === "success" && (
+            /* Derived from the latest branch scan already on screen below — a
+           summary, not another source of truth. */
+            <StatBand>
+              <StatCard
+                label={tx("Security holes")}
+                value={lastScan.auditNote ? "—" : vulns.length}
+                tone={urgentCount > 0 ? "destructive" : "warning"}
+                description={
+                  lastScan.auditNote
+                    ? tx("audit did not run")
+                    : urgentCount > 0
+                      ? tx("{n} critical or serious", { n: urgentCount })
+                      : tx("none critical or high")
+                }
+              />
+              <StatCard
+                label={tx("Outdated packages")}
+                value={outdatedCount}
+                tone="warning"
+                description={tx("of {n} packages", { n: findings.length })}
+              />
+              <StatCard
+                label={tx("Unused packages")}
+                value={unusedCount}
+                description={tx("not imported anywhere")}
+              />
+              <StatCard
+                label={tx("Live site")}
+                value={
+                  !repo.liveUrl
+                    ? "—"
+                    : repo.liveStatus === "up"
+                      ? tx("Online")
+                      : repo.liveStatus === "down"
+                        ? tx("Offline")
+                        : "—"
+                }
+                tone={
+                  repo.liveStatus === "up"
+                    ? "success"
+                    : repo.liveStatus === "down"
+                      ? "destructive"
+                      : "default"
+                }
+                description={
+                  !repo.liveUrl
+                    ? tx("no live URL set")
+                    : repo.liveCheckedAt
+                      ? tx("checked {when}", {
+                          when: formatRelative(repo.liveCheckedAt) ?? "",
+                        })
+                      : tx("not checked yet")
+                }
+              />
+            </StatBand>
+          )}
+          <RepoVerdict
+            repo={repo}
+            lastScan={lastScan ?? null}
+            vulns={vulns}
+            onFix={startFix}
+            onScan={startScan}
+            fixing={fixing}
+            scanning={scanning}
+            fixRunning={
+              updateRun?.kind === "security" &&
+              !["failed", "closed"].includes(updateRun.status)
+            }
+          />
+          <Card className="gap-0 py-0">
+            <ul className="divide-y">
+              {(
+                [
+                  {
+                    tab: "packages" as RepoTab,
+                    label: tx("Packages"),
+                    tone:
+                      urgentCount > 0
+                        ? "bad"
+                        : vulns.length > 0 || outdatedCount > 0
+                          ? "warn"
+                          : lastScan?.status === "success"
+                            ? "ok"
+                            : "none",
+                    text: lastScan?.auditNote
+                      ? tx("audit did not run")
+                      : [
+                          vulns.length
+                            ? tx("{n} security holes", { n: vulns.length })
+                            : tx("No known security holes."),
+                          outdatedCount
+                            ? tx("{n} outdated", { n: outdatedCount })
+                            : null,
+                          unusedCount
+                            ? tx("{n} unused", { n: unusedCount })
+                            : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" · "),
+                  },
+                  {
+                    tab: "live" as RepoTab,
+                    label: tx("Live"),
+                    tone:
+                      repo.liveStatus === "down"
+                        ? "bad"
+                        : (liveFindings?.length ?? 0) > 0
+                          ? "warn"
+                          : repo.liveStatus === "up"
+                            ? "ok"
+                            : "none",
+                    text: [
+                      !repo.liveUrl
+                        ? tx("no live URL set")
+                        : repo.liveStatus === "up"
+                          ? tx("Online")
+                          : repo.liveStatus === "down"
+                            ? tx("Offline")
+                            : tx("Not checked yet"),
+                      liveFindings && liveFindings.length > 0
+                        ? tx("{n} open findings", { n: liveFindings.length })
+                        : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · "),
+                  },
+                  {
+                    tab: "checks" as RepoTab,
+                    label: tx("Checks"),
+                    tone: "none",
+                    text: tx(
+                      "Setup, site security, performance, user journeys and error logs"
+                    ),
+                  },
+                  {
+                    tab: "branches" as RepoTab,
+                    label: tx("Branches"),
+                    tone: "none",
+                    text: tx("Compare branches and clean up leftovers"),
+                  },
+                ] as const
+              ).map((row) => (
+                <li key={row.tab}>
+                  <button
+                    type="button"
+                    onClick={() => setTab(row.tab)}
+                    className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm hover:bg-muted/50"
+                  >
+                    <span
+                      className={cn(
+                        "size-2 shrink-0 rounded-full",
+                        row.tone === "bad"
+                          ? "bg-destructive"
+                          : row.tone === "warn"
+                            ? "bg-warning"
+                            : row.tone === "ok"
+                              ? "bg-success"
+                              : "bg-muted-foreground/30"
+                      )}
+                      aria-hidden
                     />
+                    <span className="w-24 shrink-0 font-medium">
+                      {row.label}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-muted-foreground">
+                      {row.text || "—"}
+                    </span>
+                    <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>{tx("Latest scan")}</CardTitle>
+              <CardDescription>
+                {lastScan ? (
+                  <span className="flex flex-wrap items-center gap-2">
+                    <Badge
+                      variant={
+                        lastScan.status === "success"
+                          ? "success"
+                          : lastScan.status === "failed"
+                            ? "destructive-soft"
+                            : "secondary"
+                      }
+                    >
+                      {lastScan.status === "running"
+                        ? tx("Running…")
+                        : lastScan.status === "pending"
+                          ? tx("Pending…")
+                          : lastScan.status === "success"
+                            ? tx("done")
+                            : tx(lastScan.status)}
+                    </Badge>
+                    {new Date(lastScan.startedAt).toLocaleString()}
+                    {" · "}
+                    <span className="font-mono">{branch}</span>
+                  </span>
+                ) : (
+                  tx("Dependencies and advisories on the configured branch.")
+                )}
+              </CardDescription>
+              <CardAction className="flex flex-wrap gap-2 sm:justify-end">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={startScan}
+                  disabled={scanning || isScanInProgress}
+                >
+                  {scanning || isScanInProgress ? <Spinner /> : <RefreshCw />}
+                  {scanning
+                    ? tx("Starting…")
+                    : isScanInProgress
+                      ? tx("Scan running…")
+                      : tx("Scan now")}
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => setUpdateOpen(true)}
+                  disabled={updating}
+                >
+                  {tx("Update packages")}
+                </Button>
+              </CardAction>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {lastScan ? (
+                <>
+                  {(lastScan.status === "pending" ||
+                    lastScan.status === "running" ||
+                    lastScan.status === "success") && (
+                    <div className="space-y-3">
+                      {lastScan.status !== "success" && (
+                        <Progress
+                          value={percentDone(scanSteps)}
+                          aria-label={tx("Scan progress")}
+                        />
+                      )}
+                      <ol className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
+                        {scanSteps.map((step) => (
+                          <li
+                            key={step.id}
+                            className={cn(
+                              "flex items-center gap-2 rounded-md border px-3 py-2",
+                              step.state === "active"
+                                ? "border-primary/40 bg-primary/5 text-foreground"
+                                : "text-muted-foreground"
+                            )}
+                          >
+                            <StepIcon state={step.state} />
+                            <span className="truncate">
+                              {tx(step.label)}
+                              {step.progress}
+                            </span>
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
                   )}
-                  <ol className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
-                    {scanSteps.map((step) => (
-                      <li
-                        key={step.id}
-                        className={cn(
-                          "flex items-center gap-2 rounded-md border px-3 py-2",
-                          step.state === "active"
-                            ? "border-primary/40 bg-primary/5 text-foreground"
-                            : "text-muted-foreground"
-                        )}
+                  {lastScan.status === "failed" && lastScan.errorMessage && (
+                    <ErrorAlert title={tx("Scan failed")}>
+                      {lastScan.errorMessage}
+                    </ErrorAlert>
+                  )}
+                </>
+              ) : (
+                <EmptyState
+                  icon={PackageSearch}
+                  title={tx("No scans yet")}
+                  description={tx(
+                    "No scans yet. Run a scan to see package status."
+                  )}
+                  className="py-6 md:py-6"
+                />
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="w-full max-w-xl">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <GitBranch className="size-4 text-muted-foreground" />
+                {tx("Repository")}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-3 text-sm">
+                <dt className="text-muted-foreground">{tx("Branch")}</dt>
+                <dd className="truncate font-mono">{branch}</dd>
+                <dt className="text-muted-foreground">{tx("Root")}</dt>
+                <dd className="truncate font-mono">{rootDisplay}</dd>
+                <dt className="text-muted-foreground">
+                  {tx("Automatic scan")}
+                </dt>
+                <dd className="space-y-1">
+                  <span>{scheduleLabel(repo.scanSchedule)}</span>
+                  {repo.scanSchedule && scheduler && !scheduler.enabled && (
+                    <span className="block text-xs text-warning">
+                      {tx("scheduler not running on this instance")}
+                    </span>
+                  )}
+                  {repo.scanSchedule &&
+                    scheduler?.enabled &&
+                    repo.nextScanAt && (
+                      <span
+                        className="block text-xs text-muted-foreground"
+                        title={formatDateTime(repo.nextScanAt) ?? undefined}
                       >
-                        <StepIcon state={step.state} />
-                        <span className="truncate">
-                          {tx(step.label)}
-                          {step.progress}
-                        </span>
-                      </li>
-                    ))}
-                  </ol>
-                </div>
-              )}
-              {lastScan.status === "failed" && lastScan.errorMessage && (
-                <ErrorAlert title={tx("Scan failed")}>
-                  {lastScan.errorMessage}
-                </ErrorAlert>
-              )}
-            </>
-          ) : (
+                        next {formatRelative(repo.nextScanAt)}
+                      </span>
+                    )}
+                </dd>
+              </dl>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="packages" className="space-y-6 pt-4">
+          {lastScan?.status !== "success" && lastScan?.status !== "failed" && (
             <EmptyState
               icon={PackageSearch}
               title={tx("No scans yet")}
               description={tx(
                 "No scans yet. Run a scan to see package status."
               )}
-              className="py-6 md:py-6"
+              className="py-8 md:py-8"
             />
           )}
-        </CardContent>
-      </Card>
-
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <GitBranch className="size-4 text-muted-foreground" />
-              {tx("Repository")}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-3 text-sm">
-              <dt className="text-muted-foreground">{tx("Branch")}</dt>
-              <dd className="truncate font-mono">{branch}</dd>
-              <dt className="text-muted-foreground">{tx("Root")}</dt>
-              <dd className="truncate font-mono">{rootDisplay}</dd>
-              <dt className="text-muted-foreground">{tx("Automatic scan")}</dt>
-              <dd className="space-y-1">
-                <span>{scheduleLabel(repo.scanSchedule)}</span>
-                {repo.scanSchedule && scheduler && !scheduler.enabled && (
-                  <span className="block text-xs text-warning">
-                    {tx("scheduler not running on this instance")}
-                  </span>
-                )}
-                {repo.scanSchedule && scheduler?.enabled && repo.nextScanAt && (
-                  <span
-                    className="block text-xs text-muted-foreground"
-                    title={formatDateTime(repo.nextScanAt) ?? undefined}
-                  >
-                    next {formatRelative(repo.nextScanAt)}
-                  </span>
-                )}
-              </dd>
-            </dl>
-          </CardContent>
-        </Card>
-
-        <Card className="lg:col-span-3">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Globe className="size-4 text-muted-foreground" />
-              {tx("Deployment")}
-            </CardTitle>
-            <CardDescription className="truncate">
-              {repo.liveUrl ? (
-                <a
-                  href={repo.liveUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="font-mono text-xs text-primary hover:underline"
-                >
-                  {repo.liveUrl}
-                </a>
-              ) : (
-                tx("No live URL set")
-              )}
-            </CardDescription>
-            {repo.liveUrl && (
-              <CardAction>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={checkLive}
-                  disabled={checkingLive}
-                >
-                  {checkingLive ? <Spinner /> : <RefreshCw />}
-                  {checkingLive ? tx("Checking…") : tx("Check now")}
-                </Button>
-              </CardAction>
-            )}
-          </CardHeader>
-          <CardContent className="space-y-4 text-sm text-muted-foreground">
-            {(repo.branchHead || repo.deployedCommit) && (
-              <div className="flex flex-wrap items-center gap-1.5 text-xs">
-                <GitBranch className="size-3.5" />
-                <span className="font-mono">
-                  {repo.defaultBranch ?? "main"}{" "}
-                  {repo.branchHead?.slice(0, 7) ?? "?"}
-                </span>
-                <span>·</span>
-                <Rocket className="size-3.5" />
-                <span className="font-mono">
-                  {tx("live")} {repo.deployedCommit?.slice(0, 7) ?? "?"}
-                </span>
-                {repo.branchHead && repo.deployedCommit && (
-                  <Badge
-                    variant={
-                      repo.branchHead.startsWith(repo.deployedCommit) ||
-                      repo.deployedCommit.startsWith(repo.branchHead)
-                        ? "success"
-                        : "warning"
-                    }
-                  >
-                    {repo.branchHead.startsWith(repo.deployedCommit) ||
-                    repo.deployedCommit.startsWith(repo.branchHead)
-                      ? tx("live is up to date")
-                      : tx("not deployed yet")}
-                  </Badge>
-                )}
-                <span
-                  title={tx(
-                    "Both are watched every few minutes; a change scans again by itself."
+          {lastScan?.status === "success" && (
+            <Card className="gap-0 overflow-hidden pb-0">
+              <CardHeader className="border-b pb-4 [.border-b]:pb-4">
+                <CardTitle>{tx("Known security holes")}</CardTitle>
+                <CardDescription>
+                  {tx(
+                    "In the packages this site uses, from the public advisory databases. Most disappear with an update."
                   )}
-                >
-                  · {tx("auto-scanned on change")}
-                </span>
-              </div>
-            )}
-            {repo.liveUrl ? (
-              <div className="space-y-2">
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <Badge
-                    variant={
-                      repo.liveStatus === "up"
-                        ? "success"
-                        : repo.liveStatus === "down"
-                          ? "destructive-soft"
-                          : "outline"
-                    }
+                </CardDescription>
+              </CardHeader>
+              {lastScan?.auditNote ? (
+                // An audit that could not run must never look like a clean bill
+                // of health – that is the one mistake this list cannot afford.
+                <div className="p-6">
+                  <Alert variant="warning">
+                    <AlertTriangle />
+                    <AlertTitle>
+                      {tx("No vulnerability data for this scan")}
+                    </AlertTitle>
+                    <AlertDescription>{lastScan.auditNote}</AlertDescription>
+                  </Alert>
+                </div>
+              ) : vulns.length === 0 ? (
+                <EmptyState
+                  icon={ShieldCheck}
+                  title={tx("No known security holes.")}
+                  className="py-8 md:py-8"
+                />
+              ) : (
+                <ul className="divide-y">
+                  {vulns.map((v) => (
+                    <li key={v.id} className="flex items-start gap-3 px-6 py-3">
+                      <SeverityBadge severity={v.severity} />
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <p className="text-sm">
+                          <span className="font-mono font-medium">
+                            {v.packageName}
+                          </span>
+                          {v.title && (
+                            <span className="text-muted-foreground">
+                              {" — "}
+                              {v.title}
+                            </span>
+                          )}
+                        </p>
+                        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                          {v.fixAvailable ? (
+                            <span className="font-medium text-foreground">
+                              {v.patchedVersion
+                                ? tx("Fixed by updating to {version}", {
+                                    version: v.patchedVersion,
+                                  })
+                                : tx("Fixed by an update")}
+                            </span>
+                          ) : (
+                            <span>{tx("No fix exists yet")}</span>
+                          )}
+                          {v.fixIsSemverMajor && (
+                            <Badge
+                              variant="warning"
+                              title={tx(
+                                "A major version: the site may need small changes to work with it."
+                              )}
+                            >
+                              {tx("major update")}
+                            </Badge>
+                          )}
+                          <span aria-hidden>·</span>
+                          <span>
+                            {v.isDirect
+                              ? tx("in your package.json")
+                              : tx("comes in through another package")}
+                          </span>
+                          {v.url && (
+                            <>
+                              <span aria-hidden>·</span>
+                              <a
+                                href={v.url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-0.5 text-primary hover:underline"
+                              >
+                                {v.ghsaId ?? v.cveId ?? tx("Details")}
+                                <ExternalLink className="size-3" />
+                              </a>
+                            </>
+                          )}
+                        </p>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Card>
+          )}
+
+          {(lastScan?.status === "success" ||
+            lastScan?.status === "failed") && (
+            <Card className="gap-0 overflow-hidden pb-0">
+              <CardHeader className="border-b pb-4 [.border-b]:pb-4">
+                <CardTitle>{tx("Package findings")}</CardTitle>
+                <CardDescription>
+                  {tx(
+                    "Every dependency in package.json against its latest release."
+                  )}
+                </CardDescription>
+              </CardHeader>
+              {findings.length === 0 ? (
+                <EmptyState
+                  icon={PackageSearch}
+                  title={
+                    lastScan.status === "success"
+                      ? tx(
+                          "No dependencies in package.json or scan returned no results."
+                        )
+                      : tx("Scan failed. Check the error above.")
+                  }
+                  className="py-8 md:py-8"
+                />
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/40 hover:bg-muted/40">
+                      <TableHead className="pl-6">{tx("Package")}</TableHead>
+                      <TableHead className="hidden @2xl/main:table-cell">
+                        {tx("Current")}
+                      </TableHead>
+                      <TableHead className="hidden @2xl/main:table-cell">
+                        {tx("Latest")}
+                      </TableHead>
+                      <TableHead className="hidden @2xl/main:table-cell">
+                        {tx("Status")}
+                      </TableHead>
+                      <TableHead className="hidden pr-6 @2xl/main:table-cell">
+                        {tx("Usage")}
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {findings.map((f) => (
+                      <TableRow key={f.packageName}>
+                        <TableCell className="pr-6 pl-6 whitespace-normal @2xl/main:pr-2 @2xl/main:whitespace-nowrap">
+                          <span className="font-mono break-all @2xl/main:break-normal">
+                            {f.packageName}
+                          </span>
+                          {f.isDevDependency && (
+                            <Badge variant="secondary" className="ml-2">
+                              dev
+                            </Badge>
+                          )}
+                          {/* Phones: versions, status and usage on one line. */}
+                          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs @2xl/main:hidden">
+                            <span className="tabular font-mono text-muted-foreground">
+                              {f.currentVersion} → {f.latestVersion}
+                            </span>
+                            <Badge
+                              variant={statusVariant(
+                                f.currentVersion,
+                                f.latestVersion
+                              )}
+                            >
+                              {f.currentVersion === f.latestVersion
+                                ? tx("up to date")
+                                : tx("outdated")}
+                            </Badge>
+                            {f.unused && (
+                              <Badge variant="destructive-soft">
+                                {tx("unused")}
+                              </Badge>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="tabular hidden font-mono text-xs @2xl/main:table-cell">
+                          {f.currentVersion}
+                        </TableCell>
+                        <TableCell className="tabular hidden font-mono text-xs @2xl/main:table-cell">
+                          {f.latestVersion}
+                        </TableCell>
+                        <TableCell className="hidden @2xl/main:table-cell">
+                          <Badge
+                            variant={statusVariant(
+                              f.currentVersion,
+                              f.latestVersion
+                            )}
+                          >
+                            {f.currentVersion === f.latestVersion
+                              ? tx("up to date")
+                              : tx("outdated")}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="hidden pr-6 @2xl/main:table-cell">
+                          {f.unused ? (
+                            <Badge variant="destructive-soft">
+                              {tx("unused")}
+                            </Badge>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">
+                              {tx("used")}
+                            </span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </Card>
+          )}
+        </TabsContent>
+
+        <TabsContent value="live" className="space-y-6 pt-4">
+          <Card className="">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Globe className="size-4 text-muted-foreground" />
+                {tx("Deployment")}
+              </CardTitle>
+              <CardDescription className="truncate">
+                {repo.liveUrl ? (
+                  <a
+                    href={repo.liveUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-mono text-xs text-primary hover:underline"
                   >
-                    {repo.liveStatus === "up"
-                      ? tx("Up")
-                      : repo.liveStatus === "down"
-                        ? tx("Down")
-                        : tx("Not checked yet")}
-                    {repo.liveHttpStatus
-                      ? ` · HTTP ${repo.liveHttpStatus}`
-                      : ""}
-                  </Badge>
-                  {repo.liveCommit && (
-                    <Badge variant="outline" className="font-mono">
-                      commit {repo.liveCommit.slice(0, 12)}
+                    {repo.liveUrl}
+                  </a>
+                ) : (
+                  tx("No live URL set")
+                )}
+              </CardDescription>
+              {repo.liveUrl && (
+                <CardAction>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={checkLive}
+                    disabled={checkingLive}
+                  >
+                    {checkingLive ? <Spinner /> : <RefreshCw />}
+                    {checkingLive ? tx("Checking…") : tx("Check now")}
+                  </Button>
+                </CardAction>
+              )}
+            </CardHeader>
+            <CardContent className="space-y-4 text-sm text-muted-foreground">
+              {(repo.branchHead || repo.deployedCommit) && (
+                <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                  <GitBranch className="size-3.5" />
+                  <span className="font-mono">
+                    {repo.defaultBranch ?? "main"}{" "}
+                    {repo.branchHead?.slice(0, 7) ?? "?"}
+                  </span>
+                  <span>·</span>
+                  <Rocket className="size-3.5" />
+                  <span className="font-mono">
+                    {tx("live")} {repo.deployedCommit?.slice(0, 7) ?? "?"}
+                  </span>
+                  {repo.branchHead && repo.deployedCommit && (
+                    <Badge
+                      variant={
+                        repo.branchHead.startsWith(repo.deployedCommit) ||
+                        repo.deployedCommit.startsWith(repo.branchHead)
+                          ? "success"
+                          : "warning"
+                      }
+                    >
+                      {repo.branchHead.startsWith(repo.deployedCommit) ||
+                      repo.deployedCommit.startsWith(repo.branchHead)
+                        ? tx("live is up to date")
+                        : tx("not deployed yet")}
                     </Badge>
                   )}
-                  {repo.liveCheckedAt && (
-                    <span
-                      className="text-xs"
-                      title={formatDateTime(repo.liveCheckedAt) ?? undefined}
-                    >
-                      {tx("checked {when}", {
-                        when: formatRelative(repo.liveCheckedAt) ?? "",
-                      })}
-                    </span>
-                  )}
-                </div>
-                {repo.liveStatus === "down" && repo.liveError && (
-                  <p className="text-xs text-destructive">{repo.liveError}</p>
-                )}
-                {repo.liveStatus === "up" && !repo.liveCommit && (
-                  <p className="text-xs">
-                    {tx("The URL answers but reports no commit.")}
-                    {repo.dokployApplicationId
-                      ? tx(
-                          " The deployed commit is taken from Dokploy instead (its last successful deploy)."
-                        )
-                      : tx(" Link the Dokploy application, or expose a ")}
-                    {!repo.dokployApplicationId && (
-                      <>
-                        <code className="font-mono">commit</code>{" "}
-                        {tx("field at")}{" "}
-                        <code className="font-mono">/api/health</code>
-                        {tx(
-                          ", so a deploy can be confirmed instead of assumed."
-                        )}
-                      </>
+                  <span
+                    title={tx(
+                      "Both are watched every few minutes; a change scans again by itself."
                     )}
-                  </p>
-                )}
-              </div>
-            ) : (
-              <p className="text-xs">
-                {tx(
-                  "No live URL set. A triggered deploy only means the platform accepted the request — add the URL under Settings to see whether it reached the running app."
-                )}
-              </p>
-            )}
-            {(repo.liveUrl || repo.dokployApplicationId) && (
-              <>
-                <Separator />
+                  >
+                    · {tx("auto-scanned on change")}
+                  </span>
+                </div>
+              )}
+              {repo.liveUrl ? (
                 <div className="space-y-2">
-                  {liveScanNote && (
-                    <p className="text-xs text-muted-foreground">
-                      {liveScanNote}
-                    </p>
-                  )}
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={startLiveScan}
-                      disabled={liveScanning || isScanInProgress}
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <Badge
+                      variant={
+                        repo.liveStatus === "up"
+                          ? "success"
+                          : repo.liveStatus === "down"
+                            ? "destructive-soft"
+                            : "outline"
+                      }
                     >
-                      {liveScanning ? <Spinner /> : <ShieldCheck />}
-                      {liveScanning
-                        ? tx("Starting…")
-                        : tx("Scan the deployed version")}
-                    </Button>
-                    {liveScan?.ref && (
-                      <span className="font-mono text-xs">
-                        commit {liveScan.ref.slice(0, 12)}
+                      {repo.liveStatus === "up"
+                        ? tx("Up")
+                        : repo.liveStatus === "down"
+                          ? tx("Down")
+                          : tx("Not checked yet")}
+                      {repo.liveHttpStatus
+                        ? ` · HTTP ${repo.liveHttpStatus}`
+                        : ""}
+                    </Badge>
+                    {repo.liveCommit && (
+                      <Badge variant="outline" className="font-mono">
+                        commit {repo.liveCommit.slice(0, 12)}
+                      </Badge>
+                    )}
+                    {repo.liveCheckedAt && (
+                      <span
+                        className="text-xs"
+                        title={formatDateTime(repo.liveCheckedAt) ?? undefined}
+                      >
+                        {tx("checked {when}", {
+                          when: formatRelative(repo.liveCheckedAt) ?? "",
+                        })}
                       </span>
                     )}
                   </div>
-                  {liveScan?.status === "pending" ||
-                  liveScan?.status === "running" ? (
-                    <p className="flex items-center gap-1.5 text-xs">
-                      <Spinner className="size-3" />
-                      {tx("Scanning the deployed commit…")}
-                    </p>
-                  ) : liveScan?.status === "failed" ? (
-                    <p className="text-xs text-destructive">
-                      {liveScan.errorMessage ?? tx("The live scan failed.")}
-                    </p>
-                  ) : liveScan?.status === "success" ? (
-                    gap.fixedNotDeployed.length > 0 ? (
-                      <Alert variant="warning">
-                        <AlertTriangle />
-                        <AlertTitle className="line-clamp-none">
-                          {tx(
-                            gap.fixedNotDeployed.length === 1
-                              ? "{n} vulnerability is fixed on {branch} but still running live"
-                              : "{n} vulnerabilities are fixed on {branch} but still running live",
-                            { n: gap.fixedNotDeployed.length, branch }
-                          )}
-                        </AlertTitle>
-                        <AlertDescription className="text-xs">
-                          <p>{tx("The fix exists and has not shipped.")}</p>
-                          <ul className="w-full space-y-1">
-                            {gap.fixedNotDeployed.slice(0, 5).map((v) => (
-                              <li
-                                key={v.id}
-                                className="flex min-w-0 items-center gap-1.5"
-                              >
-                                <SeverityBadge severity={v.severity} />
-                                <span className="font-mono text-foreground">
-                                  {v.packageName}
-                                </span>
-                                <span className="truncate">
-                                  {v.ghsaId ?? v.cveId ?? v.title ?? ""}
-                                </span>
-                              </li>
-                            ))}
-                          </ul>
-                          {gap.fixedNotDeployed.length > 5 && (
-                            <p>
-                              {tx("and {n} more.", {
-                                n: gap.fixedNotDeployed.length - 5,
-                              })}
-                            </p>
-                          )}
-                        </AlertDescription>
-                      </Alert>
-                    ) : liveVulns.length > 0 ? (
-                      <p className="text-xs">
-                        {tx(
-                          liveVulns.length === 1
-                            ? "{n} known vulnerability in the deployed version — still open on {branch} too, so there is nothing waiting to be deployed."
-                            : "{n} known vulnerabilities in the deployed version — all of them still open on {branch} too, so there is nothing waiting to be deployed.",
-                          { n: liveVulns.length, branch }
-                        )}
-                      </p>
-                    ) : (
-                      <p className="flex items-center gap-1.5 text-xs text-success">
-                        <ShieldCheck className="size-3.5" />
-                        {tx(
-                          "No known vulnerabilities in the deployed version."
-                        )}
-                      </p>
-                    )
-                  ) : (
+                  {repo.liveStatus === "down" && repo.liveError && (
+                    <p className="text-xs text-destructive">{repo.liveError}</p>
+                  )}
+                  {repo.liveStatus === "up" && !repo.liveCommit && (
                     <p className="text-xs">
-                      {tx(
-                        "Scans the exact commit the deployment reports, so a CVE fixed in the code can be told apart from one fixed in production."
+                      {tx("The URL answers but reports no commit.")}
+                      {repo.dokployApplicationId
+                        ? tx(
+                            " The deployed commit is taken from Dokploy instead (its last successful deploy)."
+                          )
+                        : tx(" Link the Dokploy application, or expose a ")}
+                      {!repo.dokployApplicationId && (
+                        <>
+                          <code className="font-mono">commit</code>{" "}
+                          {tx("field at")}{" "}
+                          <code className="font-mono">/api/health</code>
+                          {tx(
+                            ", so a deploy can be confirmed instead of assumed."
+                          )}
+                        </>
                       )}
                     </p>
                   )}
-                  {liveScan?.status === "success" &&
-                    gap.newSinceDeploy.length > 0 && (
+                </div>
+              ) : (
+                <p className="text-xs">
+                  {tx(
+                    "No live URL set. A triggered deploy only means the platform accepted the request — add the URL under Settings to see whether it reached the running app."
+                  )}
+                </p>
+              )}
+              {(repo.liveUrl || repo.dokployApplicationId) && (
+                <>
+                  <Separator />
+                  <div className="space-y-2">
+                    {liveScanNote && (
+                      <p className="text-xs text-muted-foreground">
+                        {liveScanNote}
+                      </p>
+                    )}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={startLiveScan}
+                        disabled={liveScanning || isScanInProgress}
+                      >
+                        {liveScanning ? <Spinner /> : <ShieldCheck />}
+                        {liveScanning
+                          ? tx("Starting…")
+                          : tx("Scan the deployed version")}
+                      </Button>
+                      {liveScan?.ref && (
+                        <span className="font-mono text-xs">
+                          commit {liveScan.ref.slice(0, 12)}
+                        </span>
+                      )}
+                    </div>
+                    {liveScan?.status === "pending" ||
+                    liveScan?.status === "running" ? (
+                      <p className="flex items-center gap-1.5 text-xs">
+                        <Spinner className="size-3" />
+                        {tx("Scanning the deployed commit…")}
+                      </p>
+                    ) : liveScan?.status === "failed" ? (
+                      <p className="text-xs text-destructive">
+                        {liveScan.errorMessage ?? tx("The live scan failed.")}
+                      </p>
+                    ) : liveScan?.status === "success" ? (
+                      gap.fixedNotDeployed.length > 0 ? (
+                        <Alert variant="warning">
+                          <AlertTriangle />
+                          <AlertTitle className="line-clamp-none">
+                            {tx(
+                              gap.fixedNotDeployed.length === 1
+                                ? "{n} vulnerability is fixed on {branch} but still running live"
+                                : "{n} vulnerabilities are fixed on {branch} but still running live",
+                              { n: gap.fixedNotDeployed.length, branch }
+                            )}
+                          </AlertTitle>
+                          <AlertDescription className="text-xs">
+                            <p>{tx("The fix exists and has not shipped.")}</p>
+                            <ul className="w-full space-y-1">
+                              {gap.fixedNotDeployed.slice(0, 5).map((v) => (
+                                <li
+                                  key={v.id}
+                                  className="flex min-w-0 items-center gap-1.5"
+                                >
+                                  <SeverityBadge severity={v.severity} />
+                                  <span className="font-mono text-foreground">
+                                    {v.packageName}
+                                  </span>
+                                  <span className="truncate">
+                                    {v.ghsaId ?? v.cveId ?? v.title ?? ""}
+                                  </span>
+                                </li>
+                              ))}
+                            </ul>
+                            {gap.fixedNotDeployed.length > 5 && (
+                              <p>
+                                {tx("and {n} more.", {
+                                  n: gap.fixedNotDeployed.length - 5,
+                                })}
+                              </p>
+                            )}
+                          </AlertDescription>
+                        </Alert>
+                      ) : liveVulns.length > 0 ? (
+                        <p className="text-xs">
+                          {tx(
+                            liveVulns.length === 1
+                              ? "{n} known vulnerability in the deployed version — still open on {branch} too, so there is nothing waiting to be deployed."
+                              : "{n} known vulnerabilities in the deployed version — all of them still open on {branch} too, so there is nothing waiting to be deployed.",
+                            { n: liveVulns.length, branch }
+                          )}
+                        </p>
+                      ) : (
+                        <p className="flex items-center gap-1.5 text-xs text-success">
+                          <ShieldCheck className="size-3.5" />
+                          {tx(
+                            "No known vulnerabilities in the deployed version."
+                          )}
+                        </p>
+                      )
+                    ) : (
                       <p className="text-xs">
                         {tx(
-                          gap.newSinceDeploy.length === 1
-                            ? "{n} further vulnerability affects only {branch} — introduced after this commit was built."
-                            : "{n} further vulnerabilities affect only {branch} — introduced after this commit was built.",
-                          { n: gap.newSinceDeploy.length, branch }
+                          "Scans the exact commit the deployment reports, so a CVE fixed in the code can be told apart from one fixed in production."
                         )}
                       </p>
                     )}
-                </div>
-              </>
-            )}
-            {lastDeploy && (
-              <>
-                <Separator />
-                <div className="space-y-1 text-xs">
-                  <p className="flex items-center gap-1.5">
-                    <Rocket className="size-3.5" />
-                    {tx("Last deploy")}{" "}
-                    <span
-                      title={
-                        formatDateTime(lastDeploy.triggeredAt) ?? undefined
-                      }
-                    >
-                      {formatRelative(lastDeploy.triggeredAt)}
-                    </span>
-                    {lastDeploy.status === "failed"
-                      ? tx(" · rejected by Dokploy")
-                      : tx(" · accepted by Dokploy")}
-                  </p>
-                  {lastDeploy.errorMessage && (
-                    <p className="text-destructive">
-                      {lastDeploy.errorMessage}
-                    </p>
-                  )}
-                  {watchingDeploy ? (
-                    <p className="flex items-center gap-1.5">
-                      <Spinner className="size-3" />
-                      {tx(
-                        "Watching the deploy — Dokploy's build state and the live URL — for up to 12 minutes…"
+                    {liveScan?.status === "success" &&
+                      gap.newSinceDeploy.length > 0 && (
+                        <p className="text-xs">
+                          {tx(
+                            gap.newSinceDeploy.length === 1
+                              ? "{n} further vulnerability affects only {branch} — introduced after this commit was built."
+                              : "{n} further vulnerabilities affect only {branch} — introduced after this commit was built.",
+                            { n: gap.newSinceDeploy.length, branch }
+                          )}
+                        </p>
                       )}
-                    </p>
-                  ) : (
-                    lastDeploy.liveDetail && (
-                      <p
-                        className={
-                          lastDeploy.liveOk ? "text-success" : "text-warning"
+                  </div>
+                </>
+              )}
+              {lastDeploy && (
+                <>
+                  <Separator />
+                  <div className="space-y-1 text-xs">
+                    <p className="flex items-center gap-1.5">
+                      <Rocket className="size-3.5" />
+                      {tx("Last deploy")}{" "}
+                      <span
+                        title={
+                          formatDateTime(lastDeploy.triggeredAt) ?? undefined
                         }
                       >
-                        {lastDeploy.liveDetail}
+                        {formatRelative(lastDeploy.triggeredAt)}
+                      </span>
+                      {lastDeploy.status === "failed"
+                        ? tx(" · rejected by Dokploy")
+                        : tx(" · accepted by Dokploy")}
+                    </p>
+                    {lastDeploy.errorMessage && (
+                      <p className="text-destructive">
+                        {lastDeploy.errorMessage}
                       </p>
-                    )
-                  )}
-                  {lastDeploy.guard &&
-                    lastDeploy.guard !== "healthy" &&
-                    lastDeploy.guard !== "broken" &&
-                    lastDeploy.guard !== "build_failed" && (
+                    )}
+                    {watchingDeploy ? (
+                      <p className="flex items-center gap-1.5">
+                        <Spinner className="size-3" />
+                        {tx(
+                          "Watching the deploy — Dokploy's build state and the live URL — for up to 12 minutes…"
+                        )}
+                      </p>
+                    ) : (
+                      lastDeploy.liveDetail && (
+                        <p
+                          className={
+                            lastDeploy.liveOk ? "text-success" : "text-warning"
+                          }
+                        >
+                          {lastDeploy.liveDetail}
+                        </p>
+                      )
+                    )}
+                    {lastDeploy.guard &&
+                      lastDeploy.guard !== "healthy" &&
+                      lastDeploy.guard !== "broken" &&
+                      lastDeploy.guard !== "build_failed" && (
+                        <p
+                          className={
+                            lastDeploy.guard === "rolled_back"
+                              ? "text-success"
+                              : "text-destructive"
+                          }
+                        >
+                          {lastDeploy.guard === "rolled_back"
+                            ? tx("Rolled back. ")
+                            : tx("Rollback failed. ")}
+                          {lastDeploy.guardDetail}
+                        </p>
+                      )}
+                    {rollbackResult && (
                       <p
                         className={
-                          lastDeploy.guard === "rolled_back"
+                          rollbackResult.ok
                             ? "text-success"
                             : "text-destructive"
                         }
                       >
-                        {lastDeploy.guard === "rolled_back"
-                          ? tx("Rolled back. ")
-                          : tx("Rollback failed. ")}
-                        {lastDeploy.guardDetail}
+                        {rollbackResult.detail}
                       </p>
                     )}
-                  {rollbackResult && (
-                    <p
-                      className={
-                        rollbackResult.ok ? "text-success" : "text-destructive"
-                      }
+                    {!watchingDeploy &&
+                      lastDeploy.status === "succeeded" &&
+                      lastDeploy.guard !== "rolled_back" && (
+                        <Button
+                          variant={
+                            lastDeploy.guard === "broken" ||
+                            lastDeploy.guard === "error_spike" ||
+                            lastDeploy.guard === "build_failed" ||
+                            lastDeploy.guard === "rollback_failed"
+                              ? "destructive"
+                              : "outline"
+                          }
+                          size="xs"
+                          className="mt-1"
+                          onClick={() => {
+                            setRollbackResult(null);
+                            setRollbackOpen(true);
+                          }}
+                        >
+                          <Undo2 />
+                          {tx("Roll back this deploy")}
+                        </Button>
+                      )}
+                  </div>
+                </>
+              )}
+              {liveCheckError && <ErrorAlert>{liveCheckError}</ErrorAlert>}
+            </CardContent>
+          </Card>
+          <MigrationsCard repoId={repo.id} check={repo.migrationCheck} />
+
+          {repo.liveUrl && <IncidentsCard repoId={repo.id} />}
+
+          {repo.serverId && repo.dokployAppName && (
+            <RepoMemoryCard
+              serverId={repo.serverId}
+              appName={repo.dokployAppName}
+              isNext={!!repo.stack?.packages?.next}
+            />
+          )}
+
+          <Card className="gap-0 overflow-hidden pb-0">
+            <CardHeader className="border-b pb-4 [.border-b]:pb-4">
+              <CardTitle className="flex items-center gap-2">
+                <Radar className="size-4 text-muted-foreground" />
+                {tx("Live application")}
+              </CardTitle>
+              <CardDescription>
+                {tx(
+                  "Findings on the running application: Nuclei, Uptime Kuma and — through the linked Dokploy application — its container's image CVEs and memory."
+                )}
+              </CardDescription>
+              {repo.serverId && (
+                <CardAction>
+                  <Button asChild variant="outline" size="sm">
+                    <Link
+                      to="/servers/$serverId"
+                      params={{ serverId: repo.serverId }}
                     >
-                      {rollbackResult.detail}
-                    </p>
-                  )}
-                  {!watchingDeploy &&
-                    lastDeploy.status === "succeeded" &&
-                    lastDeploy.guard !== "rolled_back" && (
-                      <Button
-                        variant={
-                          lastDeploy.guard === "broken" ||
-                          lastDeploy.guard === "error_spike" ||
-                          lastDeploy.guard === "build_failed" ||
-                          lastDeploy.guard === "rollback_failed"
-                            ? "destructive"
-                            : "outline"
-                        }
-                        size="xs"
-                        className="mt-1"
-                        onClick={() => {
-                          setRollbackResult(null);
-                          setRollbackOpen(true);
-                        }}
-                      >
-                        <Undo2 />
-                        {tx("Roll back this deploy")}
-                      </Button>
-                    )}
-                </div>
-              </>
+                      {tx("Open server")}
+                    </Link>
+                  </Button>
+                </CardAction>
+              )}
+            </CardHeader>
+            {!repo.serverId ? (
+              <p className="px-6 py-4 text-sm text-muted-foreground">
+                {tx(
+                  "Not monitored: assign this application to a server (Settings → Runs on server) so its live URL is scanned with Nuclei and matched to Uptime Kuma."
+                )}
+              </p>
+            ) : liveFindings === null ? (
+              <div className="p-6">
+                <Skeleton className="h-10 w-full" />
+              </div>
+            ) : liveFindings.length === 0 ? (
+              <p className="flex items-center gap-2 px-6 py-4 text-sm text-muted-foreground">
+                <ShieldCheck className="size-4 text-success" />
+                {tx("No open findings on the live application.")}
+              </p>
+            ) : (
+              <FindingsTable findings={liveFindings} />
             )}
-            {liveCheckError && <ErrorAlert>{liveCheckError}</ErrorAlert>}
-          </CardContent>
-        </Card>
-      </div>
+          </Card>
+        </TabsContent>
 
-      <MigrationsCard repoId={repo.id} check={repo.migrationCheck} />
-
-      <BranchesCard
-        repoId={repo.id}
-        githubUrl={repo.githubUrl}
-        gitHost={repo.gitHost}
-      />
-
-      {repo.liveUrl && <IncidentsCard repoId={repo.id} />}
-
-      {repo.serverId && repo.dokployAppName && (
-        <RepoMemoryCard
-          serverId={repo.serverId}
-          appName={repo.dokployAppName}
-          isNext={!!repo.stack?.packages?.next}
-        />
-      )}
-
-      <Card className="gap-0 overflow-hidden pb-0">
-        <CardHeader className="border-b pb-4 [.border-b]:pb-4">
-          <CardTitle className="flex items-center gap-2">
-            <Radar className="size-4 text-muted-foreground" />
-            {tx("Live application")}
-          </CardTitle>
-          <CardDescription>
-            {tx(
-              "Findings on the running application: Nuclei, Uptime Kuma and — through the linked Dokploy application — its container's image CVEs and memory."
-            )}
-          </CardDescription>
-          {repo.serverId && (
-            <CardAction>
-              <Button asChild variant="outline" size="sm">
-                <Link
-                  to="/servers/$serverId"
-                  params={{ serverId: repo.serverId }}
-                >
-                  {tx("Open server")}
-                </Link>
-              </Button>
-            </CardAction>
+        <TabsContent value="checks" className="space-y-6 pt-4">
+          {!(
+            repo.liveChecks ||
+            repo.configCheck ||
+            repo.liveUrl ||
+            repo.dokployAppName
+          ) ? (
+            <EmptyState
+              icon={Radar}
+              title={tx("No live checks yet")}
+              description={tx(
+                "Set a live URL in Settings to enable site security, performance and journey checks."
+              )}
+              className="py-8 md:py-8"
+            />
+          ) : (
+            <>
+              {(repo.liveChecks || repo.configCheck || repo.liveUrl) && (
+                <ConfigCard repo={repo} />
+              )}
+              {repo.liveUrl && (
+                <SiteProbeCard repoId={repo.id} initial={repo.siteProbe} />
+              )}
+              {repo.liveUrl && <PerfCard repoId={repo.id} />}
+              {repo.liveUrl && <ChecksCard repoId={repo.id} />}
+              {repo.dokployAppName && (
+                <LogErrorsCard source={{ repositoryId: repo.id }} />
+              )}
+            </>
           )}
-        </CardHeader>
-        {!repo.serverId ? (
-          <p className="px-6 py-4 text-sm text-muted-foreground">
-            {tx(
-              "Not monitored: assign this application to a server (Settings → Runs on server) so its live URL is scanned with Nuclei and matched to Uptime Kuma."
-            )}
-          </p>
-        ) : liveFindings === null ? (
-          <div className="p-6">
-            <Skeleton className="h-10 w-full" />
-          </div>
-        ) : liveFindings.length === 0 ? (
-          <p className="flex items-center gap-2 px-6 py-4 text-sm text-muted-foreground">
-            <ShieldCheck className="size-4 text-success" />
-            {tx("No open findings on the live application.")}
-          </p>
-        ) : (
-          <FindingsTable findings={liveFindings} />
-        )}
-      </Card>
+        </TabsContent>
 
-      {/* Checks beyond security holes: useful, but not where anyone has to
-          start — one click away instead of a page of cards. */}
-      <Collapsible className="space-y-6">
-        <CollapsibleTrigger className="group flex w-full items-center gap-2 rounded-lg border px-5 py-3 text-left hover:bg-muted/40">
-          <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-90" />
-          <span className="font-medium">{tx("More checks")}</span>
-          <span className="truncate text-sm text-muted-foreground">
-            {tx(
-              "Setup, site security, performance, user journeys and error logs"
-            )}
-          </span>
-        </CollapsibleTrigger>
-        <CollapsibleContent className="space-y-6">
-          {(repo.liveChecks || repo.configCheck || repo.liveUrl) && (
-            <ConfigCard repo={repo} />
-          )}
-          {repo.liveUrl && (
-            <SiteProbeCard repoId={repo.id} initial={repo.siteProbe} />
-          )}
-          {repo.liveUrl && <PerfCard repoId={repo.id} />}
-          {repo.liveUrl && <ChecksCard repoId={repo.id} />}
-          {repo.dokployAppName && (
-            <LogErrorsCard source={{ repositoryId: repo.id }} />
-          )}
-        </CollapsibleContent>
-      </Collapsible>
+        <TabsContent value="branches" className="space-y-6 pt-4">
+          <BranchesCard
+            repoId={repo.id}
+            githubUrl={repo.githubUrl}
+            gitHost={repo.gitHost}
+          />
+        </TabsContent>
+      </Tabs>
 
       <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">

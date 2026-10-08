@@ -221,6 +221,15 @@ export const de: Record<string, string> = {
     "Kein DKIM-Schlüssel für gängige Selektoren gefunden",
 
   // Repository detail, servers and cards
+  Packages: "Pakete",
+  "{n} security holes": "{n} Sicherheitslücken",
+  "{n} unused": "{n} ungenutzt",
+  "{n} open findings": "{n} offene Findings",
+  "Compare branches and clean up leftovers":
+    "Branches vergleichen und Überreste aufräumen",
+  "No live checks yet": "Noch keine Live-Checks",
+  "Set a live URL in Settings to enable site security, performance and journey checks.":
+    "Setze in den Einstellungen eine Live-URL, um Site-Security-, Performance- und Journey-Checks zu aktivieren.",
   " (compose)": " (Compose)",
   " (this repository)": " (dieses Repository)",
   " Link the Dokploy application, or expose a ":
