@@ -354,11 +354,13 @@ Optional allowlists limit a key to specific repositories and servers.
 | `scan` | `start_nuclei_scan`, `start_repository_scan` |
 | `fix`  | `start_security_fix` (blocked when org policy disables MCP fixes) |
 
-Every tool call is written to the audit log (`mcp.<tool>`). Security fixes
-from auto-fix, the UI or MCP also record `security_fix.started` with
+`scan` and `fix` tool calls are written to the audit log (`mcp.<tool>`);
+read-only tools are not, to keep the log usable. Security fixes record
+`security_fix.started` and `security_fix.pr_opened` with
 `source: auto | manual | mcp`. Filter the audit page with **Agents &
-automation**. Nothing over MCP can change settings, issue install codes or
-touch servers.
+automation** (server-side: `GET /api/org/audit?agents=1`). API keys can be
+updated with `PATCH /api/org/api-keys/:id` (scopes and allowlists). Nothing
+over MCP can change settings, issue install codes or touch servers.
 
 Org rules under Settings → Automation & AI agents: default auto-fix on new
 repos, allow/deny MCP security fixes, require PR review (blocks auto-merge

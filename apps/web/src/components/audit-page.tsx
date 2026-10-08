@@ -43,8 +43,10 @@ const LABEL: Record<string, string> = {
   "repo.update_packages": "Started package update",
   "repo.deploy": "Triggered deploy",
   "api_key.create": "Created API key",
+  "api_key.update": "Updated API key",
   "api_key.revoke": "Revoked API key",
   "security_fix.started": "Security fix started",
+  "security_fix.pr_opened": "Security fix PR opened",
   "mcp.get_overview": "MCP: overview",
   "mcp.list_servers": "MCP: list servers",
   "mcp.get_server": "MCP: get server",
@@ -73,19 +75,13 @@ const SENSITIVE = new Set([
   "repo.delete",
   "repo.deploy",
   "api_key.create",
+  "api_key.update",
   "mcp.start_nuclei_scan",
   "mcp.start_repository_scan",
   "mcp.start_security_fix",
   "security_fix.started",
+  "security_fix.pr_opened",
 ]);
-
-function isAgentAction(action: string): boolean {
-  return (
-    action.startsWith("mcp.") ||
-    action.startsWith("api_key.") ||
-    action.startsWith("security_fix.")
-  );
-}
 
 function describe(e: AuditEntry): string | null {
   const d = (e.detail ?? {}) as Record<string, unknown>;
@@ -107,10 +103,10 @@ export function AuditPage() {
   const [loading, setLoading] = useState(false);
   const [agentsOnly, setAgentsOnly] = useState(false);
 
-  const load = async (before?: string) => {
+  const load = async (before?: string, filter = agentsOnly) => {
     setLoading(true);
     try {
-      const page = await api.getAuditLog(before);
+      const page = await api.getAuditLog(before, filter);
       setEntries((prev) => (before ? [...(prev ?? []), ...page] : page));
       setMore(page.length === 100);
       setError(null);
@@ -122,13 +118,8 @@ export function AuditPage() {
   };
 
   useEffect(() => {
-    void load();
-  }, []);
-
-  const visible =
-    entries && agentsOnly
-      ? entries.filter((e) => isAgentAction(e.action))
-      : entries;
+    void load(undefined, agentsOnly);
+  }, [agentsOnly]);
 
   return (
     <div className="space-y-6">
@@ -143,6 +134,7 @@ export function AuditPage() {
           <Button
             size="sm"
             variant={agentsOnly ? "default" : "outline"}
+            disabled={loading}
             onClick={() => setAgentsOnly((v) => !v)}
           >
             {tx("Agents & automation")}
@@ -152,7 +144,7 @@ export function AuditPage() {
       {error && <ErrorAlert>{error}</ErrorAlert>}
       {!entries && !error ? (
         <Skeleton className="h-64 rounded-lg" />
-      ) : visible && visible.length === 0 ? (
+      ) : entries && entries.length === 0 ? (
         <Card>
           <EmptyState
             icon={ScrollText}
@@ -164,7 +156,7 @@ export function AuditPage() {
             className="py-12"
           />
         </Card>
-      ) : visible ? (
+      ) : entries ? (
         <Card className="gap-0 overflow-hidden py-0">
           <Table>
             <TableHeader>
@@ -187,7 +179,7 @@ export function AuditPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {visible.map((e) => (
+              {entries.map((e) => (
                 <TableRow key={e.id}>
                   <TableCell
                     className="hidden pl-6 text-xs text-muted-foreground @2xl/main:table-cell"
@@ -258,7 +250,7 @@ export function AuditPage() {
                 size="sm"
                 disabled={loading}
                 onClick={() =>
-                  void load(entries?.[entries.length - 1]?.createdAt)
+                  void load(entries[entries.length - 1]?.createdAt, agentsOnly)
                 }
               >
                 {tx("Load older")}

@@ -721,6 +721,8 @@ export const MCP_TOOLS: McpTool[] = [
           branchName,
           status: "created",
           kind: "security",
+          triggerSource: "mcp",
+          triggerDetail: { apiKey: access.apiKeyName },
         })
         .returning();
       if (run) {

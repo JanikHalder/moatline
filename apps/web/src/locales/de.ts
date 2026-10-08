@@ -923,6 +923,13 @@ export const de: Record<string, string> = {
   "Rules for unattended security fixes and what coding agents may start over MCP. Every action is written to the audit log.":
     "Regeln für unbeaufsichtigte Security-Fixes und was Coding-Agents über MCP starten dürfen. Jede Aktion landet im Audit-Log.",
   "Save automation policy": "Automations-Richtlinie speichern",
+  "API key updated": "API-Key aktualisiert",
+  "Save key": "Key speichern",
+  "Edit {name}": "{name} bearbeiten",
+  "Updated API key": "API-Key geändert",
+  "Security fix PR opened": "Security-Fix-PR geöffnet",
+  "Via MCP ({key})": "Über MCP ({key})",
+  Manual: "Manuell",
   "can open fix PRs": "kann Fix-PRs öffnen",
   "{n} repositories": "{n} Repositories",
   Application: "Anwendung",

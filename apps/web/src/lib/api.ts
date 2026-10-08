@@ -1358,6 +1358,8 @@ export type UpdateRun = {
   branchName?: string;
   merged: boolean;
   kind: string;
+  triggerSource?: "manual" | "auto" | "mcp" | null;
+  triggerDetail?: { apiKey?: string } | null;
   /** Did a second audit show the advisories gone? null = not checked. */
   securityVerified?: boolean | null;
   securitySummary?: string | null;
@@ -2051,10 +2053,29 @@ export const api = {
     fetchApi<{ runId: string }>(`/api/servers/${id}/nuclei`, {
       method: "POST",
     }),
-  getAuditLog: (before?: string) =>
-    fetchApi<AuditEntry[]>(
-      `/api/org/audit${before ? `?before=${encodeURIComponent(before)}` : ""}`
-    ),
+  getAuditLog: (before?: string, agentsOnly?: boolean) => {
+    const q = new URLSearchParams();
+    if (before) q.set("before", before);
+    if (agentsOnly) q.set("agents", "1");
+    const qs = q.toString();
+    return fetchApi<AuditEntry[]>(
+      `/api/org/audit${qs ? `?${qs}` : ""}`
+    );
+  },
+  updateApiKey: (
+    id: string,
+    body: {
+      name?: string;
+      scan?: boolean;
+      fix?: boolean;
+      allowedRepoIds?: string[] | null;
+      allowedServerIds?: string[] | null;
+    }
+  ) =>
+    fetchApi<ApiKey>(`/api/org/api-keys/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
   getUptime: () => fetchApi<UptimeOverview>("/api/monitoring/uptime"),
   refreshUptime: () =>
     fetchApi<UptimeOverview>("/api/monitoring/uptime/refresh", {

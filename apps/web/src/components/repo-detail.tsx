@@ -1266,6 +1266,17 @@ export function RepoDetail() {
                   {tx("Auto-merge held back — the PR is open for review")}
                 </span>
               )}
+              {updateRun.kind === "security" && updateRun.triggerSource && (
+                <Badge variant="outline">
+                  {updateRun.triggerSource === "mcp"
+                    ? tx("Via MCP ({key})", {
+                        key: updateRun.triggerDetail?.apiKey ?? "—",
+                      })
+                    : updateRun.triggerSource === "auto"
+                      ? tx("Auto-fix")
+                      : tx("Manual")}
+                </Badge>
+              )}
             </CardDescription>
             {branchLink && (
               <CardAction className="flex flex-wrap gap-2 sm:justify-end">

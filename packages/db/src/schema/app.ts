@@ -212,6 +212,11 @@ export const updateRuns = pgTable("update_runs", {
   // A green build proves it compiles, not that the vulnerability is fixed.
   securityVerified: boolean("security_verified"),
   securitySummary: text("security_summary"),
+  /** Who started a security fix: manual UI, scan auto-fix, or MCP. */
+  triggerSource: text("trigger_source", {
+    enum: ["manual", "auto", "mcp"],
+  }),
+  triggerDetail: jsonb("trigger_detail").$type<{ apiKey?: string } | null>(),
 });
 
 // One row per advisory (per package) found by `npm audit` during a scan.

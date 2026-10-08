@@ -29,6 +29,7 @@ import { startRunHeartbeat } from "./run-heartbeat";
 import { failedWhile } from "../lib/run-phase";
 import { hasDeployTarget } from "./platforms";
 import { emitEvent } from "../lib/events";
+import { auditRaw } from "../lib/audit-log";
 
 const NPM_INSTALL_TIMEOUT_MS = 300_000;
 const AUDIT_FIX_TIMEOUT_MS = 300_000;
@@ -646,6 +647,26 @@ async function runSecurityFixNow(updateRunId: string): Promise<void> {
       message: `${mode === "none" ? "Checked by CI" : `${mode === "typecheck" ? "Typecheck" : "Build/tests"} ${green ? "✓" : "✗"}`} · ${changed.join(", ")}`,
       url: pr.url,
     }).catch(() => {});
+    const source = runRow.triggerSource ?? "manual";
+    const apiKey = runRow.triggerDetail?.apiKey;
+    await auditRaw({
+      organizationId: repo.organizationId,
+      action: "security_fix.pr_opened",
+      userEmail:
+        source === "mcp" && apiKey
+          ? `mcp:${apiKey}`
+          : source === "auto"
+            ? "moatline:auto_fix"
+            : null,
+      target: { type: "repository", id: repo.id, name: repo.name },
+      detail: {
+        source,
+        runId: updateRunId,
+        prUrl: pr.url,
+        prNumber: pr.number,
+        ...(apiKey ? { apiKey } : {}),
+      },
+    });
 
     // ---- Auto-merge (opt-in, guarded) ----
     if (!repo.autoMerge) return;

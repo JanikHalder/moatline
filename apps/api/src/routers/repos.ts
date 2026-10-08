@@ -1069,6 +1069,7 @@ export const reposRouter = new Hono<{ Variables: TenantVariables }>()
         branchName,
         status: "created",
         kind: "security",
+        triggerSource: "manual",
       })
       .returning();
     await audit(c, "repo.security_fix", repoTarget(repo), {

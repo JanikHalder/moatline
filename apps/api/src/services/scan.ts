@@ -466,6 +466,7 @@ async function maybeTriggerAutoFix(
         status: "created",
         kind: "security",
         scanId,
+        triggerSource: "auto",
       })
       .returning();
     if (newRun) {

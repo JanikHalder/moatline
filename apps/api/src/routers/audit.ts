@@ -3,6 +3,7 @@ import { and, desc, eq, inArray, isNull, lt, or } from "drizzle-orm";
 import { db, auditLog, member, user } from "db";
 import type { TenantVariables } from "../middleware/tenant";
 import { requireOrgAdmin } from "../middleware/tenant";
+import { agentAuditFilter } from "../lib/audit-actions";
 
 /**
  * The organization's audit trail, newest first. Account events (sign-ins,
@@ -23,6 +24,8 @@ export const auditRouter = new Hono<{ Variables: TenantVariables }>().get(
     );
     const before = c.req.query("before");
     const beforeDate = before ? new Date(before) : null;
+    const agentsOnly =
+      c.req.query("agents") === "1" || c.req.query("agentsOnly") === "1";
 
     const members = await db
       .select({ userId: member.userId })
@@ -39,6 +42,10 @@ export const auditRouter = new Hono<{ Variables: TenantVariables }>().get(
           )
         )
       : eq(auditLog.organizationId, orgId);
+    let where = scope;
+    if (agentsOnly) where = and(scope, agentAuditFilter());
+    if (beforeDate && !Number.isNaN(beforeDate.getTime()))
+      where = and(where, lt(auditLog.createdAt, beforeDate));
     const rows = await db
       .select({
         entry: auditLog,
@@ -46,11 +53,7 @@ export const auditRouter = new Hono<{ Variables: TenantVariables }>().get(
       })
       .from(auditLog)
       .leftJoin(user, eq(user.id, auditLog.userId))
-      .where(
-        beforeDate && !Number.isNaN(beforeDate.getTime())
-          ? and(scope, lt(auditLog.createdAt, beforeDate))
-          : scope
-      )
+      .where(where)
       .orderBy(desc(auditLog.createdAt))
       .limit(limit);
     return c.json(

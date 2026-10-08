@@ -182,18 +182,20 @@ async function handle(
       };
       try {
         const result = await tool.run(key.organizationId, args, access);
-        await auditRaw({
-          organizationId: key.organizationId,
-          action: `mcp.${name}`,
-          userEmail: `mcp:${key.name}`,
-          ip: clientIp(c),
-          detail: {
-            apiKey: key.name,
-            arguments: args,
-            outcome: "ok",
-            source: "mcp",
-          },
-        });
+        if (tool.scope !== "read") {
+          await auditRaw({
+            organizationId: key.organizationId,
+            action: `mcp.${name}`,
+            userEmail: `mcp:${key.name}`,
+            ip: clientIp(c),
+            detail: {
+              apiKey: key.name,
+              arguments: args,
+              outcome: "ok",
+              source: "mcp",
+            },
+          });
+        }
         if (name === "start_security_fix" && result && typeof result === "object") {
           const r = result as {
             started?: boolean;
@@ -224,19 +226,21 @@ async function handle(
         });
       } catch (e) {
         const message = e instanceof Error ? e.message : String(e);
-        await auditRaw({
-          organizationId: key.organizationId,
-          action: `mcp.${name}`,
-          userEmail: `mcp:${key.name}`,
-          ip: clientIp(c),
-          detail: {
-            apiKey: key.name,
-            arguments: args,
-            outcome: "error",
-            error: message.slice(0, 500),
-            source: "mcp",
-          },
-        });
+        if (tool.scope !== "read") {
+          await auditRaw({
+            organizationId: key.organizationId,
+            action: `mcp.${name}`,
+            userEmail: `mcp:${key.name}`,
+            ip: clientIp(c),
+            detail: {
+              apiKey: key.name,
+              arguments: args,
+              outcome: "error",
+              error: message.slice(0, 500),
+              source: "mcp",
+            },
+          });
+        }
         return ok(msg.id, {
           isError: true,
           content: [{ type: "text", text: message }],
