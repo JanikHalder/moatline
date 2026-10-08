@@ -300,9 +300,15 @@ h1 {
   color: var(--pc-paper);
   font-weight: 500;
   text-decoration: none;
+  transition:
+    background 0.2s ease,
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
 }
 .button:hover {
   background: var(--vp-c-brand-2);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(11, 107, 71, 0.18);
 }
 .button.ghost {
   background: transparent;
