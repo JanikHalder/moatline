@@ -18,6 +18,10 @@ import { startLiveScan } from "./live-scan";
 import { runServerTick } from "./server-scheduler";
 import { runDueLiveChecks } from "./live-sweep";
 import { hasDeployTarget } from "./platforms";
+import {
+  OVERNIGHT_CRON,
+  runOvernightSecurityFixes,
+} from "./security-overnight";
 
 /** How often the scheduler looks for repositories that are due. */
 export const CHECK_CRON = "*/5 * * * *";
@@ -47,6 +51,7 @@ const scheduledScans = pLimit(2);
 const inFlight = new Set<string>();
 let masterJob: Cron | null = null;
 let liveJob: Cron | null = null;
+let overnightJob: Cron | null = null;
 let lastCheckAt: Date | null = null;
 let lastCheckError: string | null = null;
 let scheduledRepoCount = 0;
@@ -297,7 +302,7 @@ export function startScheduler(): void {
     return;
   }
   console.log(
-    `[api] Scheduler enabled – checking for due scans on "${CHECK_CRON}".`
+    `[api] Scheduler enabled – checking for due scans on "${CHECK_CRON}"; overnight security fixes on "${OVERNIGHT_CRON}".`
   );
   masterJob = new Cron(CHECK_CRON, { protect: true }, () => {
     void runDueScans();
@@ -313,6 +318,11 @@ export function startScheduler(): void {
       checkOverdue().catch((e) => console.error("[cron-checks] failed:", e)),
     ]);
   });
+  overnightJob = new Cron(OVERNIGHT_CRON, { protect: true }, () => {
+    void runOvernightSecurityFixes().catch((e) =>
+      console.error("[api] overnight security fixes failed:", e)
+    );
+  });
   // Also sweep shortly after boot so a restart doesn't wait a full interval.
   setTimeout(() => {
     void runDueScans();
@@ -324,6 +334,8 @@ export function startScheduler(): void {
     masterJob = null;
     liveJob?.stop();
     liveJob = null;
+    overnightJob?.stop();
+    overnightJob = null;
   };
   process.once("SIGTERM", stop);
   process.once("SIGINT", stop);

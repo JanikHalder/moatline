@@ -8,7 +8,6 @@ import {
   packageFindings,
   vulnerabilities,
   repositories,
-  updateRuns,
 } from "db";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -22,7 +21,7 @@ const RUN_DEPCHECK_SCRIPT =
     path.join(__dirname, "scripts/run-depcheck.mjs"),
   ].find((candidate) => fs.existsSync(candidate)) ??
   path.join(API_ROOT, "src/scripts/run-depcheck.mjs");
-import { eq, and, desc, inArray } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import { resolveRepo, type RepoHandle } from "../lib/git-host";
 import { cloneRepo, cleanupClone } from "./clone";
 import { run } from "../lib/run";
@@ -35,10 +34,8 @@ import {
 import { lookupAdvisories } from "../lib/advisories";
 import { auditLockfile } from "../lib/lockfile-fix";
 import { findLockfile } from "../lib/fix-strategy";
-import type { PackageManager } from "../lib/package-manager";
 import { notify } from "../lib/notify";
-import { runSecurityFix } from "./security-fix";
-import { auditRaw } from "../lib/audit-log";
+import { startSecurityFixIfIdle } from "./queue-security-fix";
 import { buildStack } from "../lib/stack";
 
 const npmConcurrency = 10;
@@ -346,21 +343,19 @@ type ScanRepo = {
   organizationId: string;
   name: string;
   githubUrl: string;
-  autoFixCritical: boolean;
 };
 
 /**
  * Post-scan security actions:
  *  1. Alert on critical/high CVEs that are NEW vs. the previous successful scan
  *     (so scheduled scans don't re-alert every run).
- *  2. If auto-fix is enabled and a fresh fixable critical/high exists, kick off
- *     the autonomous security-fix workflow (guarded against overlap).
+ *  2. On a fresh fixable critical/high (non-major), queue an autonomous
+ *     security-fix for every repo — merge/deploy only when non-breaking.
  */
 async function handleCriticalCves(
   repo: ScanRepo,
   scanId: string,
-  vulns: Vulnerability[],
-  manager: PackageManager
+  vulns: Vulnerability[]
 ): Promise<void> {
   const criticalHigh = vulns.filter(
     (v) => v.severity === "critical" || v.severity === "high"
@@ -411,85 +406,18 @@ async function handleCriticalCves(
     url: repo.githubUrl,
   }).catch(() => {});
 
-  if (repo.autoFixCritical && fresh.some((v) => v.fixAvailable)) {
-    // The fix flow is `npm audit fix`; starting it for a pnpm or yarn repo
-    // would fail on every scan. The alert above still went out — only the
-    // automated fix is skipped, and it is skipped quietly.
-    if (manager !== "npm") {
-      console.log(
-        `[api] Auto-fix skipped for repo=${repo.id}: ${manager} repo (npm-only for now).`
-      );
-      return;
-    }
-    await maybeTriggerAutoFix(repo.id, scanId);
-  }
-}
-
-/** Start an autonomous security fix unless one is already in flight. */
-async function maybeTriggerAutoFix(
-  repositoryId: string,
-  scanId: string
-): Promise<void> {
-  try {
-    const active = await db
-      .select({ id: updateRuns.id })
-      .from(updateRuns)
-      .where(
-        and(
-          eq(updateRuns.repositoryId, repositoryId),
-          eq(updateRuns.kind, "security"),
-          inArray(updateRuns.status, [
-            "created",
-            "updating",
-            "build_running",
-            "deploying",
-          ])
-        )
-      );
-    if (active.length > 0) return; // one is already running
-
-    const [repo] = await db
-      .select({
-        id: repositories.id,
-        name: repositories.name,
-        organizationId: repositories.organizationId,
-      })
-      .from(repositories)
-      .where(eq(repositories.id, repositoryId));
-
-    const branchName = `security/cve-fix-${Date.now()}`;
-    const [newRun] = await db
-      .insert(updateRuns)
-      .values({
-        repositoryId,
-        branchName,
-        status: "created",
-        kind: "security",
-        scanId,
-        triggerSource: "auto",
-      })
-      .returning();
-    if (newRun) {
-      console.log(
-        `[api] Auto-fix triggered: repo=${repositoryId} run=${newRun.id}`
-      );
-      await auditRaw({
-        organizationId: repo?.organizationId ?? null,
-        action: "security_fix.started",
-        userEmail: "moatline:auto_fix",
-        target: {
-          type: "repository",
-          id: repositoryId,
-          name: repo?.name ?? null,
-        },
-        detail: { source: "auto", runId: newRun.id, scanId, branchName },
-      });
-      runSecurityFix(newRun.id).catch((e) =>
-        console.error("[api] runSecurityFix error:", e)
-      );
-    }
-  } catch (e) {
-    console.error("[api] maybeTriggerAutoFix error:", e);
+  // Org-wide: any fresh non-major fixable CVE queues a fix. Per-repo
+  // autoFixCritical still means the same; majors stay for a human / overnight
+  // skips them too. Merge+deploy need a non-breaking verified diff.
+  const fixableNonMajor = fresh.some(
+    (v) => v.fixAvailable && !v.fixIsSemverMajor
+  );
+  if (fixableNonMajor) {
+    await startSecurityFixIfIdle(repo.id, {
+      scanId,
+      triggerSource: "auto",
+      detail: { reason: "cve" },
+    }).catch((e) => console.error("[api] auto security-fix queue error:", e));
   }
 }
 
@@ -762,12 +690,7 @@ export async function runScan(
         .where(eq(repositories.id, repositoryId));
       // Post-scan actions (best-effort): alert on new critical CVEs.
       // Phase 4/5 also hook the autonomous security-fix trigger here.
-      await handleCriticalCves(
-        repo,
-        scanId,
-        audit.vulnerabilities,
-        audit.manager
-      );
+      await handleCriticalCves(repo, scanId, audit.vulnerabilities);
     }
     return scanId;
   } catch (err) {

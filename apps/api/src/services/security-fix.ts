@@ -2,7 +2,7 @@ import fs from "node:fs";
 import { effectiveVerifyMode } from "../lib/cloud";
 import path from "node:path";
 import { eq } from "drizzle-orm";
-import { db, updateRuns, repositories } from "db";
+import { db, updateRuns, repositories, orgIntegrations } from "db";
 import { resolveRepo, waitForHostChecks } from "../lib/git-host";
 import { run, appendLog, buildMemoryMb } from "../lib/run";
 import { runTypecheck } from "../lib/typecheck";
@@ -22,6 +22,12 @@ import {
   managerCommands,
   yarnResolutions,
 } from "../lib/fix-strategy";
+import {
+  declaredDepsChanged,
+  isNonBreakingSecurityChange,
+  lockedMajorBumps,
+} from "../lib/non-breaking-fix";
+import { resolveAutomationPolicy } from "../lib/automation-policy";
 import { cloneRepo, cleanupClone } from "./clone";
 import { notify } from "../lib/notify";
 import { deployRepository } from "./deploy";
@@ -292,6 +298,9 @@ async function runSecurityFixNow(updateRunId: string): Promise<void> {
       auditBefore.note ?? ""
     );
 
+    // Unattended CVE / overnight runs never use --force: majors stay for a human.
+    const unattended = runRow.triggerSource === "auto";
+    const allowForce = !unattended && repo.autoFixForce;
     await setStep("audit_fix");
     if (manager === "npm") {
       const fixArgs = [
@@ -301,7 +310,7 @@ async function runSecurityFixNow(updateRunId: string): Promise<void> {
         "--ignore-scripts",
         "--no-audit",
         "--no-fund",
-        ...(repo.autoFixForce ? ["--force"] : []),
+        ...(allowForce ? ["--force"] : []),
       ];
       const fix = await run("npm", fixArgs, {
         cwd: workDir,
@@ -313,7 +322,7 @@ async function runSecurityFixNow(updateRunId: string): Promise<void> {
       const plan = pnpmOverrides(
         auditBefore.vulnerabilities,
         auditBefore.packages,
-        repo.autoFixForce,
+        allowForce,
         Object.keys(depsBefore)
       );
       const n = applyPnpmOverrides(workDir, plan.overrides);
@@ -455,12 +464,23 @@ async function runSecurityFixNow(updateRunId: string): Promise<void> {
     // changed dependency in package.json, a major upgrade or a full build
     // needs the packages on disk.
     const depsAfter = readDeps(projectDir);
-    const declaredChanged = Object.keys({ ...depsBefore, ...depsAfter }).some(
-      (k) => depsBefore[k] !== depsAfter[k]
+    const declaredChanged = declaredDepsChanged(depsBefore, depsAfter);
+    const majorBumps = lockedMajorBumps(
+      auditBefore.packages,
+      auditAfter.packages
     );
+    const nonBreaking = isNonBreakingSecurityChange({
+      onlyAllowedFiles: onlyDeps,
+      declaredDepsUnchanged: !declaredChanged,
+      majorBumps,
+      usedForce: allowForce,
+    });
+    if (!nonBreaking.ok) {
+      log.push(`[non-breaking]\nheld: ${nonBreaking.reason}`);
+    }
     const needsInstall =
       mode === "build" ||
-      (mode === "typecheck" && (declaredChanged || repo.autoFixForce));
+      (mode === "typecheck" && (declaredChanged || allowForce));
     // Only installing and building is heavy — the fix itself was a few
     // seconds of lockfile work and never queues. Those steps wait for the
     // one build slot, so parallel runs cannot overload the server.
@@ -668,8 +688,31 @@ async function runSecurityFixNow(updateRunId: string): Promise<void> {
       },
     });
 
-    // ---- Auto-merge (opt-in, guarded) ----
-    if (!repo.autoMerge) return;
+    // ---- Auto-merge ----
+    // Per-repo autoMerge, or unattended CVE/overnight when the diff is
+    // non-breaking. Org requirePrReview always blocks merge + deploy.
+    const [integ] = await db
+      .select({ automationPolicy: orgIntegrations.automationPolicy })
+      .from(orgIntegrations)
+      .where(eq(orgIntegrations.organizationId, repo.organizationId));
+    const policy = resolveAutomationPolicy(integ?.automationPolicy);
+    const wantMerge =
+      (repo.autoMerge || (unattended && nonBreaking.ok)) &&
+      !policy.requirePrReview;
+    if (!wantMerge) {
+      if (policy.requirePrReview) {
+        log.push(
+          "Auto-merge skipped: organization requires pull-request review."
+        );
+      } else if (unattended && !nonBreaking.ok) {
+        log.push(`Auto-merge skipped: ${nonBreaking.reason}.`);
+        await db
+          .update(updateRuns)
+          .set({ logOutput: log.join("\n\n"), currentStep: "merge_held" })
+          .where(eq(updateRuns.id, updateRunId));
+      }
+      return;
+    }
     if (!green) {
       log.push(`Auto-merge skipped: ${mode} check not green.`);
       await db
@@ -678,13 +721,20 @@ async function runSecurityFixNow(updateRunId: string): Promise<void> {
         .where(eq(updateRuns.id, updateRunId));
       return;
     }
-    if (!onlyDeps) {
-      log.push(
-        "Auto-merge skipped: diff touches files beyond package.json/lockfile."
-      );
+    // Unattended: full non-breaking gate. Opt-in autoMerge: deps-only (legacy).
+    const mergeGate = unattended
+      ? nonBreaking
+      : onlyDeps
+        ? ({ ok: true } as const)
+        : ({
+            ok: false as const,
+            reason: "diff touches files beyond package.json/lockfile",
+          } as const);
+    if (!mergeGate.ok) {
+      log.push(`Auto-merge skipped: ${mergeGate.reason}.`);
       await db
         .update(updateRuns)
-        .set({ logOutput: log.join("\n\n") })
+        .set({ logOutput: log.join("\n\n"), currentStep: "merge_held" })
         .where(eq(updateRuns.id, updateRunId));
       return;
     }
@@ -768,8 +818,14 @@ async function runSecurityFixNow(updateRunId: string): Promise<void> {
       url: pr.url,
     }).catch(() => {});
 
-    // ---- Auto-deploy (opt-in) ----
-    if (!repo.autoDeploy) return;
+    // ---- Auto-deploy ----
+    // Per-repo autoDeploy, or unattended non-breaking merge when Dokploy /
+    // Coolify is linked on the repository.
+    const wantDeploy =
+      (repo.autoDeploy || unattended) &&
+      !policy.requirePrReview &&
+      nonBreaking.ok;
+    if (!wantDeploy) return;
     if (!hasDeployTarget(repo)) {
       log.push(
         "Auto-deploy skipped: no Dokploy or Coolify application on this repo."

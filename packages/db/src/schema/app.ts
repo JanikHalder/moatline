@@ -216,7 +216,11 @@ export const updateRuns = pgTable("update_runs", {
   triggerSource: text("trigger_source", {
     enum: ["manual", "auto", "mcp"],
   }),
-  triggerDetail: jsonb("trigger_detail").$type<{ apiKey?: string } | null>(),
+  triggerDetail: jsonb("trigger_detail").$type<{
+    apiKey?: string;
+    /** Why an auto fix started: fresh CVE alert vs overnight backlog. */
+    reason?: "cve" | "overnight";
+  } | null>(),
 });
 
 // One row per advisory (per package) found by `npm audit` during a scan.
