@@ -7,7 +7,7 @@
 
 services:
   web:
-    image: ghcr.io/janikhalder/moatline-web:1.10.0
+    image: ghcr.io/janikhalder/moatline-web:1.11.0
     environment:
       - SERVICE_URL_WEB_80
     depends_on:
@@ -19,7 +19,7 @@ services:
       retries: 10
 
   api:
-    image: ghcr.io/janikhalder/moatline-api:1.10.0
+    image: ghcr.io/janikhalder/moatline-api:1.11.0
     environment:
       - DATABASE_URL=postgresql://$SERVICE_USER_POSTGRES:$SERVICE_PASSWORD_POSTGRES@postgres:5432/${POSTGRES_DB:-package_checker}
       - BETTER_AUTH_SECRET=$SERVICE_PASSWORD_64_AUTH

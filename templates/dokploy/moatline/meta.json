@@ -1,7 +1,7 @@
 {
   "id": "moatline",
   "name": "Moatline",
-  "version": "1.10.0",
+  "version": "1.11.0",
   "description": "Security and operations for self-hosted apps: vulnerabilities in code, images and servers fixed by pull request, guarded deploys with rollback, uptime and self-healing, backup and database checks \u2014 for Dokploy and Coolify.",
   "logo": "moatline.svg",
   "links": {
