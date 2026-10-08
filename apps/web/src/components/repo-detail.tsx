@@ -1402,8 +1402,14 @@ export function RepoDetail() {
             fixing={fixing}
             scanning={scanning}
             fixRunning={
-              updateRun?.kind === "security" &&
-              !["failed", "closed"].includes(updateRun.status)
+              !!updateRun &&
+              updateRun.kind === "security" &&
+              !isRunTerminal(
+                updateRun.status,
+                repo,
+                updateRun.kind,
+                updateRun.currentStep
+              )
             }
           />
           <Card className="gap-0 py-0">
