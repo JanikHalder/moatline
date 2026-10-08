@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/JanikHalder/moatline/security/advisories/new
+    about: Report a security issue privately (GitHub Security Advisories). Do not open a public issue.
+  - name: Documentation and guide
+    url: https://moatline.dev/guide/introduction
+    about: Product docs — how Moatline works, quick start, security model.

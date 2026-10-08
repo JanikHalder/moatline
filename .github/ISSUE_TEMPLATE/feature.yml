@@ -1,0 +1,24 @@
+name: Feature request
+description: A useful change or integration.
+title: "[feature] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What is hard or missing today?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Idea
+      description: What would help — keep it concrete if you can.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Platforms, stack (Next.js, Payload, …), agency vs solo — optional.

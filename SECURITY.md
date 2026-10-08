@@ -56,4 +56,13 @@ See [docs/SERVER_MONITORING.md](docs/SERVER_MONITORING.md) for the full threat t
 
 ## Reporting
 
-If you find a security issue, please report it privately (e.g. via GitHub Security Advisories or a private channel) rather than opening a public issue.
+If you find a security issue, **report it privately** — do not open a public
+GitHub issue.
+
+1. Prefer
+   [GitHub Security Advisories](https://github.com/JanikHalder/moatline/security/advisories/new)
+   on the public repository (private vulnerability reporting is enabled).
+2. Or email [info@janikhalder.at](mailto:info@janikhalder.at) with a clear
+   description, impact, and steps to reproduce if you have them.
+
+We will acknowledge reports and work on a fix before any public disclosure.

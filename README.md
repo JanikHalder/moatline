@@ -72,6 +72,13 @@ The server and web app are licensed under the
 Monorepo: TanStack Router + shadcn/ui (web), Hono API, Drizzle
 (PostgreSQL), Better Auth.
 
+**Remotes:** public work lands on `origin`
+([moatline](https://github.com/JanikHalder/moatline)); day-to-day WIP often
+uses the private `dev` remote
+([moatline-dev](https://github.com/JanikHalder/moatline-dev)). See
+[CONTRIBUTING.md](CONTRIBUTING.md). To publish the current tip to public
+`main`: `./scripts/push-public.sh` (asks for confirmation).
+
 ## Setup
 
 1. **Install**
