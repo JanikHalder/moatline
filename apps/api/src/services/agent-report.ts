@@ -7,6 +7,7 @@ import {
 } from "./oom-events";
 import { and, eq, isNull } from "drizzle-orm";
 import { db, serverFindings, serverMetrics, servers } from "db";
+import { maybeAutoCleanDocker } from "./docker-auto-clean";
 import {
   syncAndNotify,
   syncFindings,
@@ -1268,6 +1269,13 @@ export async function ingestReport(
       })
     );
   }
+
+  // Disk at/over threshold + reclaimable Docker junk → clear via Dokploy
+  // (build cache + unused images only). Cooldown inside maybeAutoCleanDocker.
+  void maybeAutoCleanDocker(
+    { ...server, lastReport },
+    lastReport
+  ).catch((e) => console.error("[servers] docker auto-clean failed:", e));
 }
 
 /**
