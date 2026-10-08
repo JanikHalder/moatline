@@ -33,6 +33,7 @@ import {
   DEFAULT_AUTOMATION_POLICY,
   resolveAutomationPolicy,
 } from "../lib/automation-policy";
+import { disableRepoAutonomy } from "../lib/enforce-pr-review";
 
 /**
  * Settings hold org secrets and can trigger deploys/merges – so, unlike the
@@ -288,7 +289,10 @@ export const orgSettingsRouter = new Hono<{ Variables: TenantVariables }>()
     }
 
     const [existing] = await db
-      .select({ id: orgIntegrations.id })
+      .select({
+        id: orgIntegrations.id,
+        automationPolicy: orgIntegrations.automationPolicy,
+      })
       .from(orgIntegrations)
       .where(eq(orgIntegrations.organizationId, orgId));
 
@@ -301,6 +305,26 @@ export const orgSettingsRouter = new Hono<{ Variables: TenantVariables }>()
       await db
         .insert(orgIntegrations)
         .values({ organizationId: orgId, ...patch });
+    }
+
+    let reposAutonomyDisabled = 0;
+    const policyAfter = resolveAutomationPolicy(
+      body.automationPolicy !== undefined
+        ? body.automationPolicy
+        : existing?.automationPolicy
+    );
+    if (body.automationPolicy !== undefined && policyAfter.requirePrReview) {
+      const disabled = await disableRepoAutonomy(orgId);
+      reposAutonomyDisabled = disabled.length;
+      if (disabled.length > 0) {
+        await audit(c, "automation.pr_review_enforced", {
+          type: "organization",
+          id: orgId,
+        }, {
+          repos: disabled.map((r) => r.name),
+          autoMergeAndDeploy: "off",
+        });
+      }
     }
     // New Kuma credentials: show the result now, not after the next tick.
     if (body.kumaBaseUrl !== undefined || body.kumaApiKey !== undefined) {
@@ -336,7 +360,7 @@ export const orgSettingsRouter = new Hono<{ Variables: TenantVariables }>()
         changed: Object.keys(patch),
       }
     );
-    return c.json({ ok: true });
+    return c.json({ ok: true, reposAutonomyDisabled });
   })
   .post(
     "/telegram/chats",

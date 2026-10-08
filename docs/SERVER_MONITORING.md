@@ -350,9 +350,10 @@ Optional allowlists limit a key to specific repositories and servers.
 
 | Scope  | Tools |
 | ------ | ----- |
-| `read` | `get_overview`, `list_servers`, `get_server`, `list_findings`, `list_uptime`, `list_repositories`, `get_repository`, `list_members`, `get_audit_log`, `get_findings_report` |
+| `read` | `get_overview`, `list_servers`, `get_server`, `list_findings`, `list_uptime`, `list_repositories`, `get_repository`, `get_audit_log`, `get_findings_report` |
 | `scan` | `start_nuclei_scan`, `start_repository_scan` |
 | `fix`  | `start_security_fix` (blocked when org policy disables MCP fixes) |
+| `members` | `list_members` (emails and roles — off by default) |
 
 `scan` and `fix` tool calls are written to the audit log (`mcp.<tool>`);
 read-only tools are not, to keep the log usable. Security fixes record

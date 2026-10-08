@@ -36,8 +36,8 @@ export type McpTool = {
   name: string;
   description: string;
   inputSchema: Record<string, unknown>;
-  /** "read" always; "scan" starts scans; "fix" opens security-fix PRs. */
-  scope: "read" | "scan" | "fix";
+  /** "read" always; "scan" starts scans; "fix" opens security-fix PRs; "members" lists org members. */
+  scope: "read" | "scan" | "fix" | "members";
   run: (orgId: string, args: Args, access: McpAccess) => Promise<unknown>;
 };
 
@@ -535,9 +535,9 @@ export const MCP_TOOLS: McpTool[] = [
   },
   {
     name: "list_members",
-    scope: "read",
+    scope: "members",
     description:
-      "Members of the organization with role and whether two-factor authentication is on.",
+      "Organization members with role and two-factor status. Needs the members permission (not included on read-only keys).",
     inputSchema: { type: "object", properties: {} },
     async run(orgId) {
       return db

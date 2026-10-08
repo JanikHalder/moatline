@@ -52,6 +52,7 @@ export function ApiKeysCard() {
   const [name, setName] = useState("");
   const [scan, setScan] = useState(false);
   const [fix, setFix] = useState(false);
+  const [members, setMembers] = useState(false);
   const [expiry, setExpiry] = useState("90");
   const [allowedRepoIds, setAllowedRepoIds] = useState<string[]>([]);
   const [allowedServerIds, setAllowedServerIds] = useState<string[]>([]);
@@ -61,6 +62,7 @@ export function ApiKeysCard() {
   const [editName, setEditName] = useState("");
   const [editScan, setEditScan] = useState(false);
   const [editFix, setEditFix] = useState(false);
+  const [editMembers, setEditMembers] = useState(false);
   const [editRepoIds, setEditRepoIds] = useState<string[]>([]);
   const [editServerIds, setEditServerIds] = useState<string[]>([]);
   const [editBusy, setEditBusy] = useState(false);
@@ -103,6 +105,7 @@ export function ApiKeysCard() {
         name: name.trim(),
         scan,
         fix,
+        members,
         expiresInDays: expiry === "never" ? null : Number(expiry),
         allowedRepoIds: allowedRepoIds.length ? allowedRepoIds : null,
         allowedServerIds: allowedServerIds.length ? allowedServerIds : null,
@@ -111,6 +114,7 @@ export function ApiKeysCard() {
       setName("");
       setScan(false);
       setFix(false);
+      setMembers(false);
       setAllowedRepoIds([]);
       setAllowedServerIds([]);
       await load();
@@ -139,6 +143,7 @@ export function ApiKeysCard() {
     setEditName(k.name);
     setEditScan(k.scopes.includes("scan"));
     setEditFix(k.scopes.includes("fix"));
+    setEditMembers(k.scopes.includes("members"));
     setEditRepoIds(k.allowedRepoIds ?? []);
     setEditServerIds(k.allowedServerIds ?? []);
   };
@@ -151,6 +156,7 @@ export function ApiKeysCard() {
         name: editName.trim(),
         scan: editScan,
         fix: editFix,
+        members: editMembers,
         allowedRepoIds: editRepoIds.length ? editRepoIds : null,
         allowedServerIds: editServerIds.length ? editServerIds : null,
       });
@@ -245,11 +251,14 @@ export function ApiKeysCard() {
                       {k.scopes.includes("scan") && (
                         <Badge variant="warning">{tx("can start scans")}</Badge>
                       )}
-                      {k.scopes.includes("fix") && (
-                        <Badge variant="warning">
-                          {tx("can open fix PRs")}
-                        </Badge>
-                      )}
+                    {k.scopes.includes("fix") && (
+                      <Badge variant="warning">
+                        {tx("can open fix PRs")}
+                      </Badge>
+                    )}
+                    {k.scopes.includes("members") && (
+                      <Badge variant="warning">{tx("can list members")}</Badge>
+                    )}
                       {k.revokedAt ? (
                         <Badge
                           variant="outline"
@@ -304,6 +313,13 @@ export function ApiKeysCard() {
                           onCheckedChange={(v) => setEditFix(v === true)}
                         />
                         {tx("Also allow opening security-fix pull requests")}
+                      </label>
+                      <label className="flex items-center gap-2">
+                        <Checkbox
+                          checked={editMembers}
+                          onCheckedChange={(v) => setEditMembers(v === true)}
+                        />
+                        {tx("Also allow listing organization members")}
                       </label>
                       {repos.length > 0 && (
                         <div className="space-y-2">
@@ -421,6 +437,13 @@ export function ApiKeysCard() {
                 onCheckedChange={(v) => setFix(v === true)}
               />
               {tx("Also allow opening security-fix pull requests")}
+            </label>
+            <label className="flex items-center gap-2">
+              <Checkbox
+                checked={members}
+                onCheckedChange={(v) => setMembers(v === true)}
+              />
+              {tx("Also allow listing organization members")}
             </label>
             {repos.length > 0 && (
               <div className="space-y-2">

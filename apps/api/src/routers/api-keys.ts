@@ -16,6 +16,7 @@ const createSchema = z.object({
   name: z.string().trim().min(1).max(100),
   scan: z.boolean().default(false),
   fix: z.boolean().default(false),
+  members: z.boolean().default(false),
   expiresInDays: z.number().int().min(1).max(365).nullable().default(90),
   allowedRepoIds: uuidList,
   allowedServerIds: uuidList,
@@ -25,6 +26,7 @@ const patchSchema = z.object({
   name: z.string().trim().min(1).max(100).optional(),
   scan: z.boolean().optional(),
   fix: z.boolean().optional(),
+  members: z.boolean().optional(),
   allowedRepoIds: uuidList,
   allowedServerIds: uuidList,
 });
@@ -60,10 +62,15 @@ async function validateAllowlists(
   return null;
 }
 
-function scopesFrom(body: { scan: boolean; fix: boolean }): string[] {
+function scopesFrom(body: {
+  scan: boolean;
+  fix: boolean;
+  members: boolean;
+}): string[] {
   const scopes = ["read"];
   if (body.scan) scopes.push("scan");
   if (body.fix) scopes.push("fix");
+  if (body.members) scopes.push("members");
   return scopes;
 }
 
@@ -105,7 +112,11 @@ export const apiKeysRouter = new Hono<{ Variables: TenantVariables }>()
     );
     if (bad) return c.json({ error: bad }, 400);
     const k = generateApiKey();
-    const scopes = scopesFrom(body);
+    const scopes = scopesFrom({
+      scan: body.scan,
+      fix: body.fix,
+      members: body.members,
+    });
     const allowedRepoIds = normalizeAllowlist(body.allowedRepoIds);
     const allowedServerIds = normalizeAllowlist(body.allowedServerIds);
     const [row] = await db
@@ -150,6 +161,7 @@ export const apiKeysRouter = new Hono<{ Variables: TenantVariables }>()
       body.name === undefined &&
       body.scan === undefined &&
       body.fix === undefined &&
+      body.members === undefined &&
       body.allowedRepoIds === undefined &&
       body.allowedServerIds === undefined
     ) {
@@ -175,7 +187,9 @@ export const apiKeysRouter = new Hono<{ Variables: TenantVariables }>()
       existing.scopes.includes("scan");
     const fix =
       body.fix ?? existing.scopes.includes("fix");
-    const scopes = scopesFrom({ scan, fix });
+    const members =
+      body.members ?? existing.scopes.includes("members");
+    const scopes = scopesFrom({ scan, fix, members });
 
     const patch: Partial<typeof apiKeys.$inferInsert> = { scopes };
     if (body.name !== undefined) patch.name = body.name;

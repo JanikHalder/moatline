@@ -36,7 +36,7 @@ const plausible: HeadConfig[] =
 
 export default defineConfig({
   title: brand.name,
-  description: `${brand.tagline}: vulnerabilities fixed by pull request, guarded deploys, uptime, backups and server checks for Dokploy, Coolify and any Docker host.`,
+  description: `${brand.tagline}. Vulnerabilities fixed by pull request, guarded deploys, MCP for coding agents, uptime and server checks for Dokploy, Coolify and any Docker host. Self-host free or Stripe checkout from 8 €/month.`,
   cleanUrls: true,
   sitemap: { hostname: brand.site },
   // Designed light-first; the dark variant follows the toggle.
@@ -230,10 +230,11 @@ ${posts
       path.join(outDir, "llms.txt"),
       `# ${brand.name}
 
-> ${brand.tagline}. Moatline watches what you deploy on Dokploy, Coolify, Komodo, Portainer or any Docker host — code, containers, servers, databases and domains — and fixes what it can: it opens the pull request for a vulnerable dependency, checks the build, deploys through your platform, watches the live site and rolls back when the deploy broke it. Open source (AGPL-3.0, agent MIT); self-hosted for free or as a cloud service from 8 € a month.
+> ${brand.tagline}. Moatline watches what you deploy on Dokploy, Coolify, Komodo, Portainer or any Docker host — code, containers, servers, databases and domains — and fixes what it can: pull requests for vulnerable dependencies, guarded deploys, MCP for AI assistants with scopes and audit trail. Open source (AGPL-3.0, agent MIT); self-hosted free or cloud from 8 €/month via Stripe — no sales process.
 
 ## Product
 - [Introduction](${brand.site}/guide/introduction): what Moatline watches and how the layers connect
+- [AI agents and MCP](${brand.site}/guide/ai-agents): API keys, scopes, automation policy
 - [Quick start](${brand.site}/guide/quick-start): self-host with Docker Compose
 - [Vulnerabilities and fixes](${brand.site}/guide/vulnerabilities): lockfile scans, fix pull requests, merge and deploy
 - [Deploys, uptime, self-healing](${brand.site}/guide/operations): deploy guard, rollback, checks from several locations, status pages
@@ -274,6 +275,7 @@ ${posts.map((p) => `- [${p.title}](${p.url}): ${p.description}`).join("\n")}
             { text: "Quick start", link: "/guide/quick-start" },
             { text: "Connect Dokploy or Coolify", link: "/guide/platforms" },
             { text: "Install the agent", link: "/guide/agent" },
+            { text: "AI agents and MCP", link: "/guide/ai-agents" },
           ],
         },
         {

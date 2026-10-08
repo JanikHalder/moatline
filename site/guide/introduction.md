@@ -26,9 +26,10 @@ with Stripe checkout — no demos, no seat games, every feature in every plan.
 
 Coding agents (Claude, Cursor and others) can read this organization's data
 over MCP: findings, uptime, servers, repositories. Keys have scopes (`read`,
-`scan`, `fix`), optional allowlists, and every tool call is audited. Org
-policy can require pull-request review (no auto-merge), disable MCP security
-fixes, and default new repositories to auto-fix critical CVEs.
+`scan`, `fix`, optional `members`), allowlists, and scan/fix calls are
+audited. Org policy can require pull-request review (and turns off existing
+auto-merge/deploy), disable MCP security fixes, and default new repos to
+auto-fix critical CVEs. See [AI agents and MCP](./ai-agents).
 
 ## What it is not
 

@@ -41,8 +41,16 @@ export function AutomationPolicyCard() {
     if (!policy) return;
     setBusy(true);
     try {
-      await api.updateOrgIntegrations({ automationPolicy: policy });
-      toast.success(tx("Automation policy saved"));
+      const res = await api.updateOrgIntegrations({ automationPolicy: policy });
+      if (res.reposAutonomyDisabled && res.reposAutonomyDisabled > 0) {
+        toast.success(
+          tx("Automation policy saved — auto-merge/deploy turned off on {n} repositories", {
+            n: res.reposAutonomyDisabled,
+          })
+        );
+      } else {
+        toast.success(tx("Automation policy saved"));
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : tx("Could not save"));
     } finally {
@@ -122,7 +130,7 @@ export function AutomationPolicyCard() {
                 </span>
                 <span className="mt-0.5 block text-muted-foreground">
                   {tx(
-                    "Blocks enabling auto-merge and auto-deploy on any repository. Fixes still open as PRs."
+                    "Blocks auto-merge and auto-deploy. Saving turns them off on repositories that already had them enabled. Fixes still open as PRs."
                   )}
                 </span>
               </span>

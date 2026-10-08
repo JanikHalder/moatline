@@ -912,6 +912,14 @@ export const de: Record<string, string> = {
   "Automation policy saved": "Automations-Richtlinie gespeichert",
   "Blocks enabling auto-merge and auto-deploy on any repository. Fixes still open as PRs.":
     "Blockiert das Einschalten von Auto-Merge und Auto-Deploy auf jedem Repository. Fixes öffnen weiterhin als PRs.",
+  "Blocks auto-merge and auto-deploy. Saving turns them off on repositories that already had them enabled. Fixes still open as PRs.":
+    "Blockiert Auto-Merge und Auto-Deploy. Beim Speichern werden sie auf Repositories ausgeschaltet, die sie schon hatten. Fixes öffnen weiterhin als PRs.",
+  "Automation policy saved — auto-merge/deploy turned off on {n} repositories":
+    "Automations-Richtlinie gespeichert — Auto-Merge/Deploy auf {n} Repositories ausgeschaltet",
+  "Also allow listing organization members":
+    "Auch das Auflisten der Organisationsmitglieder erlauben",
+  "can list members": "kann Mitglieder auflisten",
+  "PR review policy enforced": "PR-Review-Richtlinie durchgesetzt",
   "Limit to repositories (empty = all)":
     "Auf Repositories beschränken (leer = alle)",
   "Limit to servers (empty = all)": "Auf Server beschränken (leer = alle)",

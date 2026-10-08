@@ -1788,6 +1788,7 @@ export const api = {
     name: string;
     scan: boolean;
     fix: boolean;
+    members: boolean;
     expiresInDays: number | null;
     allowedRepoIds?: string[] | null;
     allowedServerIds?: string[] | null;
@@ -1812,10 +1813,13 @@ export const api = {
       }>;
     }>("/api/org/integrations/test", { method: "POST" }),
   updateOrgIntegrations: (body: OrgIntegrationsUpdate) =>
-    fetchApi<{ ok: boolean }>("/api/org/integrations", {
-      method: "PUT",
-      body: JSON.stringify(body),
-    }),
+    fetchApi<{ ok: boolean; reposAutonomyDisabled?: number }>(
+      "/api/org/integrations",
+      {
+        method: "PUT",
+        body: JSON.stringify(body),
+      }
+    ),
   startUpdate: (
     repoId: string,
     options?: { withAi?: boolean; target?: "minor" | "latest" }
@@ -2068,6 +2072,7 @@ export const api = {
       name?: string;
       scan?: boolean;
       fix?: boolean;
+      members?: boolean;
       allowedRepoIds?: string[] | null;
       allowedServerIds?: string[] | null;
     }

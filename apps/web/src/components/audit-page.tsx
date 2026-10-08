@@ -47,6 +47,7 @@ const LABEL: Record<string, string> = {
   "api_key.revoke": "Revoked API key",
   "security_fix.started": "Security fix started",
   "security_fix.pr_opened": "Security fix PR opened",
+  "automation.pr_review_enforced": "PR review policy enforced",
   "mcp.get_overview": "MCP: overview",
   "mcp.list_servers": "MCP: list servers",
   "mcp.get_server": "MCP: get server",
