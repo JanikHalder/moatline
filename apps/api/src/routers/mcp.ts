@@ -196,7 +196,11 @@ async function handle(
             },
           });
         }
-        if (name === "start_security_fix" && result && typeof result === "object") {
+        if (
+          name === "start_security_fix" &&
+          result &&
+          typeof result === "object"
+        ) {
           const r = result as {
             started?: boolean;
             repository?: string;

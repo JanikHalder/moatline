@@ -317,13 +317,18 @@ export const orgSettingsRouter = new Hono<{ Variables: TenantVariables }>()
       const disabled = await disableRepoAutonomy(orgId);
       reposAutonomyDisabled = disabled.length;
       if (disabled.length > 0) {
-        await audit(c, "automation.pr_review_enforced", {
-          type: "organization",
-          id: orgId,
-        }, {
-          repos: disabled.map((r) => r.name),
-          autoMergeAndDeploy: "off",
-        });
+        await audit(
+          c,
+          "automation.pr_review_enforced",
+          {
+            type: "organization",
+            id: orgId,
+          },
+          {
+            repos: disabled.map((r) => r.name),
+            autoMergeAndDeploy: "off",
+          }
+        );
       }
     }
     // New Kuma credentials: show the result now, not after the next tick.

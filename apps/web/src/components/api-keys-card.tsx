@@ -251,14 +251,16 @@ export function ApiKeysCard() {
                       {k.scopes.includes("scan") && (
                         <Badge variant="warning">{tx("can start scans")}</Badge>
                       )}
-                    {k.scopes.includes("fix") && (
-                      <Badge variant="warning">
-                        {tx("can open fix PRs")}
-                      </Badge>
-                    )}
-                    {k.scopes.includes("members") && (
-                      <Badge variant="warning">{tx("can list members")}</Badge>
-                    )}
+                      {k.scopes.includes("fix") && (
+                        <Badge variant="warning">
+                          {tx("can open fix PRs")}
+                        </Badge>
+                      )}
+                      {k.scopes.includes("members") && (
+                        <Badge variant="warning">
+                          {tx("can list members")}
+                        </Badge>
+                      )}
                       {k.revokedAt ? (
                         <Badge
                           variant="outline"
@@ -323,10 +325,15 @@ export function ApiKeysCard() {
                       </label>
                       {repos.length > 0 && (
                         <div className="space-y-2">
-                          <Label>{tx("Limit to repositories (empty = all)")}</Label>
+                          <Label>
+                            {tx("Limit to repositories (empty = all)")}
+                          </Label>
                           <div className="flex max-h-36 flex-col gap-1 overflow-y-auto rounded-md border p-2">
                             {repos.map((r) => (
-                              <label key={r.id} className="flex items-center gap-2">
+                              <label
+                                key={r.id}
+                                className="flex items-center gap-2"
+                              >
                                 <Checkbox
                                   checked={editRepoIds.includes(r.id)}
                                   onCheckedChange={(v) =>
@@ -349,7 +356,10 @@ export function ApiKeysCard() {
                           <Label>{tx("Limit to servers (empty = all)")}</Label>
                           <div className="flex max-h-36 flex-col gap-1 overflow-y-auto rounded-md border p-2">
                             {servers.map((s) => (
-                              <label key={s.id} className="flex items-center gap-2">
+                              <label
+                                key={s.id}
+                                className="flex items-center gap-2"
+                              >
                                 <Checkbox
                                   checked={editServerIds.includes(s.id)}
                                   onCheckedChange={(v) =>
@@ -447,9 +457,7 @@ export function ApiKeysCard() {
             </label>
             {repos.length > 0 && (
               <div className="space-y-2">
-                <Label>
-                  {tx("Limit to repositories (empty = all)")}
-                </Label>
+                <Label>{tx("Limit to repositories (empty = all)")}</Label>
                 <div className="flex max-h-36 flex-col gap-1 overflow-y-auto rounded-md border p-2">
                   {repos.map((r) => (
                     <label key={r.id} className="flex items-center gap-2">

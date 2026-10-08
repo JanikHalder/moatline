@@ -44,9 +44,12 @@ export function AutomationPolicyCard() {
       const res = await api.updateOrgIntegrations({ automationPolicy: policy });
       if (res.reposAutonomyDisabled && res.reposAutonomyDisabled > 0) {
         toast.success(
-          tx("Automation policy saved — auto-merge/deploy turned off on {n} repositories", {
-            n: res.reposAutonomyDisabled,
-          })
+          tx(
+            "Automation policy saved — auto-merge/deploy turned off on {n} repositories",
+            {
+              n: res.reposAutonomyDisabled,
+            }
+          )
         );
       } else {
         toast.success(tx("Automation policy saved"));

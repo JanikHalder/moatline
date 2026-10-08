@@ -31,19 +31,19 @@ other sites).
 
 ## Common causes in Next.js / Payload
 
-| Symptom | Likely cause |
-| ------- | ------------ |
-| Climbs under traffic, never flattens | Unbounded `fetch` / ISR / custom `Map` cache |
-| Spikes on image-heavy pages | `next/image` optimizer concurrency or large originals |
-| Climbs on CMS use | Payload (or similar) keeping media/documents in memory |
-| High from the start | Huge bundle / many workers / wrong `NODE_OPTIONS` heap |
-| Climbs then OOM restart loop | Limit too low *or* real leak — check chart slope |
+| Symptom                              | Likely cause                                           |
+| ------------------------------------ | ------------------------------------------------------ |
+| Climbs under traffic, never flattens | Unbounded `fetch` / ISR / custom `Map` cache           |
+| Spikes on image-heavy pages          | `next/image` optimizer concurrency or large originals  |
+| Climbs on CMS use                    | Payload (or similar) keeping media/documents in memory |
+| High from the start                  | Huge bundle / many workers / wrong `NODE_OPTIONS` heap |
+| Climbs then OOM restart loop         | Limit too low _or_ real leak — check chart slope       |
 
 Also check: listeners never removed, global singletons that accumulate,
 logging that buffers huge strings, and building **on** the same small
 server as production (build OOM is a separate finding: `oom:build`).
 
-## How to see *what* grows (developers)
+## How to see _what_ grows (developers)
 
 1. Temporarily add `NODE_OPTIONS=--inspect=0.0.0.0:9229` (and open the port
    only via Tailscale / SSH tunnel — never publicly).

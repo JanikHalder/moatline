@@ -27,12 +27,12 @@ Replace `YOUR-MOATLINE` with your cloud URL or self-hosted `PUBLIC_URL`.
 
 ## Scopes
 
-| Scope | What the key may do |
-| ----- | ------------------- |
+| Scope             | What the key may do                                                                    |
+| ----------------- | -------------------------------------------------------------------------------------- |
 | **read** (always) | Overview, servers, findings, uptime, repositories, findings markdown report, audit log |
-| **scan** | Start Nuclei and repository dependency scans |
-| **fix** | Open lockfile-only security-fix pull requests (if org policy allows) |
-| **members** | List organization members (role and 2FA status — not granted by default) |
+| **scan**          | Start Nuclei and repository dependency scans                                           |
+| **fix**           | Open lockfile-only security-fix pull requests (if org policy allows)                   |
+| **members**       | List organization members (role and 2FA status — not granted by default)               |
 
 Read-only keys are enough for questions like “what is down?” or “which repos
 have critical CVEs?”. Grant **scan** or **fix** only when the assistant should

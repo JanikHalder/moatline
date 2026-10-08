@@ -1281,7 +1281,10 @@ export type Repo = LiveState & {
   /** Framework versions from the last lockfile scan. */
   stack?: {
     packages?: Partial<
-      Record<"payload" | "next" | "react", { declared: string | null; installed: string | null }>
+      Record<
+        "payload" | "next" | "react",
+        { declared: string | null; installed: string | null }
+      >
     >;
   } | null;
 };
@@ -2068,9 +2071,7 @@ export const api = {
     if (before) q.set("before", before);
     if (agentsOnly) q.set("agents", "1");
     const qs = q.toString();
-    return fetchApi<AuditEntry[]>(
-      `/api/org/audit${qs ? `?${qs}` : ""}`
-    );
+    return fetchApi<AuditEntry[]>(`/api/org/audit${qs ? `?${qs}` : ""}`);
   },
   updateApiKey: (
     id: string,

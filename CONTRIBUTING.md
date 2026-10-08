@@ -10,10 +10,10 @@ This tree is published as **[moatline](https://github.com/JanikHalder/moatline)*
 
 If both remotes are configured locally:
 
-| Remote   | Repository     | Use for                                      |
-| -------- | -------------- | -------------------------------------------- |
-| `origin` | `moatline`     | Public `main`, releases, what outsiders see  |
-| `dev`    | `moatline-dev` | WIP branches, experiments, private drafts    |
+| Remote   | Repository     | Use for                                     |
+| -------- | -------------- | ------------------------------------------- |
+| `origin` | `moatline`     | Public `main`, releases, what outsiders see |
+| `dev`    | `moatline-dev` | WIP branches, experiments, private drafts   |
 
 ```bash
 # Typical day-to-day (private)

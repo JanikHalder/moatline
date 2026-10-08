@@ -147,7 +147,12 @@ onUnmounted(() => observer?.disconnect());
         </p>
       </div>
 
-      <figure class="log" aria-label="An example night" data-reveal style="--d: 2">
+      <figure
+        class="log"
+        aria-label="An example night"
+        data-reveal
+        style="--d: 2"
+      >
         <figcaption>shop.example, last night</figcaption>
         <ol>
           <li

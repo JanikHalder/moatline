@@ -182,13 +182,9 @@ export const apiKeysRouter = new Hono<{ Variables: TenantVariables }>()
     );
     if (bad) return c.json({ error: bad }, 400);
 
-    const scan =
-      body.scan ??
-      existing.scopes.includes("scan");
-    const fix =
-      body.fix ?? existing.scopes.includes("fix");
-    const members =
-      body.members ?? existing.scopes.includes("members");
+    const scan = body.scan ?? existing.scopes.includes("scan");
+    const fix = body.fix ?? existing.scopes.includes("fix");
+    const members = body.members ?? existing.scopes.includes("members");
     const scopes = scopesFrom({ scan, fix, members });
 
     const patch: Partial<typeof apiKeys.$inferInsert> = { scopes };
