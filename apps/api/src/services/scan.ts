@@ -38,6 +38,7 @@ import { findLockfile } from "../lib/fix-strategy";
 import type { PackageManager } from "../lib/package-manager";
 import { notify } from "../lib/notify";
 import { runSecurityFix } from "./security-fix";
+import { auditRaw } from "../lib/audit-log";
 import { buildStack } from "../lib/stack";
 
 const npmConcurrency = 10;
@@ -447,6 +448,15 @@ async function maybeTriggerAutoFix(
       );
     if (active.length > 0) return; // one is already running
 
+    const [repo] = await db
+      .select({
+        id: repositories.id,
+        name: repositories.name,
+        organizationId: repositories.organizationId,
+      })
+      .from(repositories)
+      .where(eq(repositories.id, repositoryId));
+
     const branchName = `security/cve-fix-${Date.now()}`;
     const [newRun] = await db
       .insert(updateRuns)
@@ -462,6 +472,17 @@ async function maybeTriggerAutoFix(
       console.log(
         `[api] Auto-fix triggered: repo=${repositoryId} run=${newRun.id}`
       );
+      await auditRaw({
+        organizationId: repo?.organizationId ?? null,
+        action: "security_fix.started",
+        userEmail: "moatline:auto_fix",
+        target: {
+          type: "repository",
+          id: repositoryId,
+          name: repo?.name ?? null,
+        },
+        detail: { source: "auto", runId: newRun.id, scanId, branchName },
+      });
       runSecurityFix(newRun.id).catch((e) =>
         console.error("[api] runSecurityFix error:", e)
       );

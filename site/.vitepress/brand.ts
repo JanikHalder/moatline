@@ -5,7 +5,8 @@
  */
 export const brand = {
   name: "Moatline",
-  tagline: "Security and operations for self-hosted apps",
+  tagline:
+    "No-bullshit DevSecOps for self-hosted apps — buy online, no sales call",
   /** The landing page and docs. */
   site: "https://moatline.dev",
   repo: "https://github.com/JanikHalder/moatline",

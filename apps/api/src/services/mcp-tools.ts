@@ -8,22 +8,37 @@ import {
   scans,
   serverFindings,
   servers,
+  updateRuns,
   user,
   vulnerabilities,
 } from "db";
 import { STALE_AFTER_MS } from "./server-scheduler";
 import { startNucleiRun } from "./nuclei";
 import { runScan } from "./scan";
+import { runSecurityFix } from "./security-fix";
+import { buildFindingsReport } from "./findings-report";
+import {
+  resolveAutomationPolicy,
+  type AutomationPolicy,
+} from "../lib/automation-policy";
 
 type Args = Record<string, unknown>;
+
+/** Per-key resource limits. Null allowlist = every resource in the org. */
+export type McpAccess = {
+  allowedRepoIds: string[] | null;
+  allowedServerIds: string[] | null;
+  policy: AutomationPolicy;
+  apiKeyName: string;
+};
 
 export type McpTool = {
   name: string;
   description: string;
   inputSchema: Record<string, unknown>;
-  /** "read" for everything; "scan" may start scans. */
-  scope: "read" | "scan";
-  run: (orgId: string, args: Args) => Promise<unknown>;
+  /** "read" always; "scan" starts scans; "fix" opens security-fix PRs. */
+  scope: "read" | "scan" | "fix";
+  run: (orgId: string, args: Args, access: McpAccess) => Promise<unknown>;
 };
 
 const SEVERITY_RANK: Record<string, number> = {
@@ -45,8 +60,40 @@ function num(args: Args, key: string, fallback: number, max: number): number {
   return Number.isFinite(v) && v > 0 ? Math.min(Math.floor(v), max) : fallback;
 }
 
+function assertServerAllowed(access: McpAccess, id: string) {
+  if (access.allowedServerIds && !access.allowedServerIds.includes(id)) {
+    throw new Error("This API key cannot access that server.");
+  }
+}
+
+function assertRepoAllowed(access: McpAccess, id: string) {
+  if (access.allowedRepoIds && !access.allowedRepoIds.includes(id)) {
+    throw new Error("This API key cannot access that repository.");
+  }
+}
+
+async function orgServers(orgId: string, access: McpAccess) {
+  const rows = await db
+    .select()
+    .from(servers)
+    .where(eq(servers.organizationId, orgId));
+  if (!access.allowedServerIds) return rows;
+  const allow = new Set(access.allowedServerIds);
+  return rows.filter((s) => allow.has(s.id));
+}
+
+async function orgRepos(orgId: string, access: McpAccess) {
+  const rows = await db
+    .select()
+    .from(repositories)
+    .where(eq(repositories.organizationId, orgId));
+  if (!access.allowedRepoIds) return rows;
+  const allow = new Set(access.allowedRepoIds);
+  return rows.filter((r) => allow.has(r.id));
+}
+
 /** A server by id or (case-insensitive, partial) name, within the org only. */
-async function findServer(orgId: string, ref: string) {
+async function findServer(orgId: string, ref: string, access: McpAccess) {
   const rows = await db
     .select()
     .from(servers)
@@ -66,10 +113,12 @@ async function findServer(orgId: string, ref: string) {
       `"${ref}" matches several servers: ${rows.map((s) => s.name).join(", ")}. Be more specific.`
     );
   }
-  return exact ?? rows[0]!;
+  const s = exact ?? rows[0]!;
+  assertServerAllowed(access, s.id);
+  return s;
 }
 
-async function findRepo(orgId: string, ref: string) {
+async function findRepo(orgId: string, ref: string, access: McpAccess) {
   const rows = await db
     .select()
     .from(repositories)
@@ -89,7 +138,9 @@ async function findRepo(orgId: string, ref: string) {
       `"${ref}" matches several repositories: ${rows.map((r) => r.name).join(", ")}.`
     );
   }
-  return exact ?? rows[0]!;
+  const r = exact ?? rows[0]!;
+  assertRepoAllowed(access, r.id);
+  return r;
 }
 
 function serverSummary(s: typeof servers.$inferSelect) {
@@ -195,21 +246,15 @@ export const MCP_TOOLS: McpTool[] = [
     description:
       "Security overview of the organization: servers (reporting/silent), open findings by severity, the most severe open problems, applications with critical/high CVEs in their deployed version, monitors down.",
     inputSchema: { type: "object", properties: {} },
-    async run(orgId) {
-      const srv = await db
-        .select()
-        .from(servers)
-        .where(eq(servers.organizationId, orgId));
+    async run(orgId, _args, access) {
+      const srv = await orgServers(orgId, access);
       const ids = srv.map((s) => s.id);
       const findings = await openFindings(ids, {}, 1000);
       const bySeverity: Record<string, number> = {};
       for (const f of findings)
         bySeverity[f.severity] = (bySeverity[f.severity] ?? 0) + 1;
       const names = new Map(srv.map((s) => [s.id, s.name]));
-      const repos = await db
-        .select({ id: repositories.id, name: repositories.name })
-        .from(repositories)
-        .where(eq(repositories.organizationId, orgId));
+      const repos = await orgRepos(orgId, access);
       const apps = [];
       for (const r of repos) {
         const v = await latestVulns(r.id);
@@ -258,11 +303,8 @@ export const MCP_TOOLS: McpTool[] = [
     description:
       "All servers with agent status, OS, load/memory/disk in percent, pending and security updates, reboot required, and open findings per severity.",
     inputSchema: { type: "object", properties: {} },
-    async run(orgId) {
-      const srv = await db
-        .select()
-        .from(servers)
-        .where(eq(servers.organizationId, orgId));
+    async run(orgId, _args, access) {
+      const srv = await orgServers(orgId, access);
       const findings = await openFindings(
         srv.map((s) => s.id),
         {},
@@ -292,10 +334,10 @@ export const MCP_TOOLS: McpTool[] = [
       },
       required: ["server"],
     },
-    async run(orgId, args) {
+    async run(orgId, args, access) {
       const ref = str(args, "server");
       if (!ref) throw new Error("server is required");
-      const s = await findServer(orgId, ref);
+      const s = await findServer(orgId, ref, access);
       const r = (s.lastReport ?? {}) as Record<string, unknown>;
       return {
         ...serverSummary(s),
@@ -338,14 +380,11 @@ export const MCP_TOOLS: McpTool[] = [
         limit: { type: "number", description: "Default 50, at most 500" },
       },
     },
-    async run(orgId, args) {
+    async run(orgId, args, access) {
       const ref = str(args, "server");
       const srv = ref
-        ? [await findServer(orgId, ref)]
-        : await db
-            .select()
-            .from(servers)
-            .where(eq(servers.organizationId, orgId));
+        ? [await findServer(orgId, ref, access)]
+        : await orgServers(orgId, access);
       const names = new Map(srv.map((s) => [s.id, s.name]));
       const rows = await openFindings(
         srv.map((s) => s.id),
@@ -406,11 +445,8 @@ export const MCP_TOOLS: McpTool[] = [
     description:
       "Repositories with their CVE counts: on the deployed commit (live scan) and on the branch, and how many are fixed on the branch but still deployed.",
     inputSchema: { type: "object", properties: {} },
-    async run(orgId) {
-      const repos = await db
-        .select()
-        .from(repositories)
-        .where(eq(repositories.organizationId, orgId));
+    async run(orgId, _args, access) {
+      const repos = await orgRepos(orgId, access);
       const out = [];
       for (const r of repos) {
         const v = await latestVulns(r.id);
@@ -464,10 +500,10 @@ export const MCP_TOOLS: McpTool[] = [
       },
       required: ["repository"],
     },
-    async run(orgId, args) {
+    async run(orgId, args, access) {
       const ref = str(args, "repository");
       if (!ref) throw new Error("repository is required");
-      const r = await findRepo(orgId, ref);
+      const r = await findRepo(orgId, ref, access);
       const v = await latestVulns(r.id);
       const list = v.live ? v.liveVulns : v.branchVulns;
       return {
@@ -521,7 +557,7 @@ export const MCP_TOOLS: McpTool[] = [
     name: "get_audit_log",
     scope: "read",
     description:
-      "Recent security-relevant actions: who did what, when and from which IP.",
+      "Recent security-relevant actions: who did what, when and from which IP. Includes MCP and automation events.",
     inputSchema: {
       type: "object",
       properties: {
@@ -572,10 +608,10 @@ export const MCP_TOOLS: McpTool[] = [
       },
       required: ["server"],
     },
-    async run(orgId, args) {
+    async run(orgId, args, access) {
       const ref = str(args, "server");
       if (!ref) throw new Error("server is required");
-      const s = await findServer(orgId, ref);
+      const s = await findServer(orgId, ref, access);
       const runId = await startNucleiRun(s.id);
       return {
         started: true,
@@ -597,10 +633,10 @@ export const MCP_TOOLS: McpTool[] = [
       },
       required: ["repository"],
     },
-    async run(orgId, args) {
+    async run(orgId, args, access) {
       const ref = str(args, "repository");
       if (!ref) throw new Error("repository is required");
-      const r = await findRepo(orgId, ref);
+      const r = await findRepo(orgId, ref, access);
       const [scan] = await db
         .insert(scans)
         .values({ repositoryId: r.id, status: "pending" })
@@ -611,4 +647,105 @@ export const MCP_TOOLS: McpTool[] = [
       return { started: true, repository: r.name, scanId: scan!.id };
     },
   },
+  {
+    name: "get_findings_report",
+    scope: "read",
+    description:
+      "Markdown task list of a repository's findings for a coding agent (Cursor, Claude, etc.): what to change, why, and how to verify.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        repository: { type: "string", description: "Repository name or id" },
+      },
+      required: ["repository"],
+    },
+    async run(orgId, args, access) {
+      const ref = str(args, "repository");
+      if (!ref) throw new Error("repository is required");
+      const r = await findRepo(orgId, ref, access);
+      const markdown = await buildFindingsReport(r.id);
+      return { repository: r.name, markdown };
+    },
+  },
+  {
+    name: "start_security_fix",
+    scope: "fix",
+    description:
+      "Open a lockfile-only security-fix pull request for a repository's CVEs. Needs the fix permission; blocked when the organization disables MCP security fixes.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        repository: { type: "string", description: "Repository name or id" },
+      },
+      required: ["repository"],
+    },
+    async run(orgId, args, access) {
+      if (!access.policy.allowMcpSecurityFix) {
+        throw new Error(
+          "This organization has disabled security fixes over MCP."
+        );
+      }
+      const ref = str(args, "repository");
+      if (!ref) throw new Error("repository is required");
+      const r = await findRepo(orgId, ref, access);
+      const active = await db
+        .select()
+        .from(updateRuns)
+        .where(
+          and(
+            eq(updateRuns.repositoryId, r.id),
+            eq(updateRuns.kind, "security"),
+            inArray(updateRuns.status, [
+              "created",
+              "updating",
+              "build_running",
+              "deploying",
+            ])
+          )
+        );
+      if (active[0]) {
+        return {
+          started: false,
+          alreadyRunning: true,
+          repository: r.name,
+          runId: active[0].id,
+          branchName: active[0].branchName,
+          status: active[0].status,
+        };
+      }
+      const branchName = `security/cve-fix-${Date.now()}`;
+      const [run] = await db
+        .insert(updateRuns)
+        .values({
+          repositoryId: r.id,
+          branchName,
+          status: "created",
+          kind: "security",
+        })
+        .returning();
+      if (run) {
+        runSecurityFix(run.id).catch((e) =>
+          console.error("[mcp] security fix failed:", e)
+        );
+      }
+      return {
+        started: true,
+        repository: r.name,
+        runId: run!.id,
+        branchName,
+        status: run!.status,
+        source: "mcp",
+        apiKey: access.apiKeyName,
+      };
+    },
+  },
 ];
+
+/** Load org automation policy for MCP access checks. */
+export async function loadMcpPolicy(orgId: string): Promise<AutomationPolicy> {
+  const [row] = await db
+    .select({ automationPolicy: orgIntegrations.automationPolicy })
+    .from(orgIntegrations)
+    .where(eq(orgIntegrations.organizationId, orgId));
+  return resolveAutomationPolicy(row?.automationPolicy);
+}

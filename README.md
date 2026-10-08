@@ -2,11 +2,13 @@
 
 # Moatline
 
-**Security and operations for self-hosted apps.** Moatline watches
-what you deploy on Dokploy, Coolify, Komodo, Portainer or any Docker host — code, containers,
-servers, databases and domains — and fixes what it can by itself: it opens
-the pull request, checks the build, deploys through your platform, watches
-the live site and rolls back when the deploy broke it.
+**No-bullshit DevSecOps for self-hosted apps** — buy online with Stripe, or
+self-host free. Moatline watches what you deploy on Dokploy, Coolify, Komodo,
+Portainer or any Docker host — code, containers, servers, databases and
+domains — and fixes what it can by itself: it opens the pull request, checks
+the build, deploys through your platform, watches the live site and rolls
+back when the deploy broke it. Coding agents connect over MCP with scopes,
+allowlists and a full audit trail.
 
 ## What it does
 
@@ -34,6 +36,9 @@ the live site and rolls back when the deploy broke it.
   monthly maintenance report.
 - **New site in one go** — GitHub repository from your template, Dokploy
   app with database, backup and domain, first deploy and monitoring.
+- **AI agents over MCP** — scopes (`read` / `scan` / `fix`), optional
+  repo and server allowlists, findings as a markdown task list, every
+  tool call in the audit log; org policy for auto-fix and PR review.
 
 English and German UI and notifications (Slack, Telegram, email).
 

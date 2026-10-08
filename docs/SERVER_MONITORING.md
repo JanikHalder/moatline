@@ -344,13 +344,25 @@ installs it from nixpkgs. Elsewhere, put `nuclei` on the PATH or set
 sessions). It accepts only organization API keys — never a browser session.
 Owners/admins create them under Settings → API keys: shown once, stored as a
 hash, 90 days by default, revocable, every call rate-limited per key.
+Optional allowlists limit a key to specific repositories and servers.
 
-Read-only keys get `get_overview`, `list_servers`, `get_server`,
-`list_findings`, `list_uptime`, `list_repositories`, `get_repository`,
-`list_members` and `get_audit_log`. Keys created with the scan permission
-additionally get `start_nuclei_scan` and `start_repository_scan`; those calls
-are written to the audit log. Nothing over MCP can change settings, issue
-install codes or touch servers.
+**Scopes**
+
+| Scope  | Tools |
+| ------ | ----- |
+| `read` | `get_overview`, `list_servers`, `get_server`, `list_findings`, `list_uptime`, `list_repositories`, `get_repository`, `list_members`, `get_audit_log`, `get_findings_report` |
+| `scan` | `start_nuclei_scan`, `start_repository_scan` |
+| `fix`  | `start_security_fix` (blocked when org policy disables MCP fixes) |
+
+Every tool call is written to the audit log (`mcp.<tool>`). Security fixes
+from auto-fix, the UI or MCP also record `security_fix.started` with
+`source: auto | manual | mcp`. Filter the audit page with **Agents &
+automation**. Nothing over MCP can change settings, issue install codes or
+touch servers.
+
+Org rules under Settings → Automation & AI agents: default auto-fix on new
+repos, allow/deny MCP security fixes, require PR review (blocks auto-merge
+and auto-deploy).
 
 ```bash
 claude mcp add --transport http moatline https://package.example.com/api/mcp \

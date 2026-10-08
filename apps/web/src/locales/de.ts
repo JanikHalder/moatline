@@ -900,6 +900,31 @@ export const de: Record<string, string> = {
     "Agent-Status und Härtungs-Scores (SCA) aus der Wazuh-Manager-API.",
   "Also allow starting Nuclei and repository scans":
     "Auch das Starten von Nuclei- und Repository-Scans erlauben",
+  "Also allow opening security-fix pull requests":
+    "Auch das Öffnen von Security-Fix-Pull-Requests erlauben",
+  "Agents & automation": "Agents & Automation",
+  "Allow security fixes over MCP": "Security-Fixes über MCP erlauben",
+  "API keys with the fix scope may open lockfile-only security PRs. Turn off to keep MCP read/scan only.":
+    "API-Keys mit dem Fix-Scope dürfen nur-Lockfile-Security-PRs öffnen. Ausschalten hält MCP auf Lesen/Scans.",
+  "Auto-fix critical CVEs on new repositories":
+    "Kritische CVEs auf neuen Repositories automatisch fixen",
+  "Automation & AI agents": "Automation & KI-Agents",
+  "Automation policy saved": "Automations-Richtlinie gespeichert",
+  "Blocks enabling auto-merge and auto-deploy on any repository. Fixes still open as PRs.":
+    "Blockiert das Einschalten von Auto-Merge und Auto-Deploy auf jedem Repository. Fixes öffnen weiterhin als PRs.",
+  "Limit to repositories (empty = all)":
+    "Auf Repositories beschränken (leer = alle)",
+  "Limit to servers (empty = all)": "Auf Server beschränken (leer = alle)",
+  "New repositories start with auto-fix for critical advisories turned on. You can still change each repository.":
+    "Neue Repositories starten mit Auto-Fix für kritische Advisories. Du kannst jedes Repository weiterhin ändern.",
+  "No agent or automation events yet":
+    "Noch keine Agent- oder Automations-Ereignisse",
+  "Require pull-request review": "Pull-Request-Review verlangen",
+  "Rules for unattended security fixes and what coding agents may start over MCP. Every action is written to the audit log.":
+    "Regeln für unbeaufsichtigte Security-Fixes und was Coding-Agents über MCP starten dürfen. Jede Aktion landet im Audit-Log.",
+  "Save automation policy": "Automations-Richtlinie speichern",
+  "can open fix PRs": "kann Fix-PRs öffnen",
+  "{n} repositories": "{n} Repositories",
   Application: "Anwendung",
   "Ask them to change it after the first sign-in via “Forgot password?”.":
     "Bitte sie, es nach der ersten Anmeldung über „Passwort vergessen?“ zu ändern.",
@@ -992,6 +1017,8 @@ export const de: Record<string, string> = {
   "Last scan": "Letzter Scan",
   "Let Claude or another AI assistant read this organization's servers, findings, uptime and repositories over MCP. Read-only unless you allow starting scans; nothing can change settings or touch servers.":
     "Lass Claude oder einen anderen KI-Assistenten die Server, Findings, Uptime und Repositories dieser Organisation über MCP lesen. Nur lesend, außer du erlaubst das Starten von Scans; Einstellungen ändern oder Server anfassen kann nichts.",
+  "Let Claude or another AI assistant read this organization's servers, findings, uptime and repositories over MCP. Choose scopes and optional allowlists; nothing can change settings or touch servers.":
+    "Lass Claude oder einen anderen KI-Assistenten die Server, Findings, Uptime und Repositories dieser Organisation über MCP lesen. Wähle Scopes und optionale Allowlists; Einstellungen ändern oder Server anfassen kann nichts.",
   "Lets the security pipeline ship a merged fix.":
     "Lässt die Sicherheits-Pipeline einen gemergten Fix ausliefern.",
   "Lighthouse and Core Web Vitals of every live site, daily and after each deploy, through Google PageSpeed Insights.":
@@ -1160,6 +1187,8 @@ export const de: Record<string, string> = {
   'Which tool watches which server. A grey cell is not "all good" — it means nobody is looking.':
     "Welches Tool welchen Server überwacht. Eine graue Zelle heißt nicht „alles gut“ — sondern dass niemand hinschaut.",
   Who: "Wer",
+  "Who did what, when and from where — sign-ins, access to servers, integrations, members, MCP tools and unattended actions. Secret values are never recorded.":
+    "Wer hat was wann und von wo getan — Anmeldungen, Serverzugriff, Integrationen, Mitglieder, MCP-Tools und unbeaufsichtigte Aktionen. Geheimnisse werden nie gespeichert.",
   "Who did what, when and from where — sign-ins, access to servers, integrations, members and unattended actions. Secret values are never recorded.":
     "Wer was wann und von wo getan hat — Anmeldungen, Zugriffe auf Server, Integrationen, Mitglieder und automatische Aktionen. Secret-Werte werden nie aufgezeichnet.",
   "You were invited to join": "Du wurdest eingeladen, beizutreten:",

@@ -369,6 +369,12 @@ export const orgIntegrations = pgTable("org_integrations", {
   // Weekly summary: on by default, last sent (so restarts do not resend).
   weeklyDigest: boolean("weekly_digest").notNull().default(true),
   lastDigestAt: timestamp("last_digest_at"),
+  // Org-wide rules for auto-fix and MCP security fixes.
+  automationPolicy: jsonb("automation_policy").$type<{
+    defaultAutoFixCritical?: boolean;
+    allowMcpSecurityFix?: boolean;
+    requirePrReview?: boolean;
+  }>(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
@@ -707,8 +713,9 @@ export const auditLog = pgTable(
 );
 
 /**
- * API keys for the MCP endpoint. Shown once, stored as SHA-256. Read-only
- * unless created with the "scan" scope, which may only start scans.
+ * API keys for the MCP endpoint. Shown once, stored as SHA-256. Scopes:
+ * read (always), scan (start scans), fix (open security-fix PRs).
+ * Null allowlists mean every repo/server in the organization.
  */
 export const apiKeys = pgTable(
   "api_keys",
@@ -722,6 +729,8 @@ export const apiKeys = pgTable(
     keyHash: text("key_hash").notNull().unique(),
     prefix: text("prefix").notNull(),
     scopes: jsonb("scopes").$type<string[]>().notNull().default(["read"]),
+    allowedRepoIds: jsonb("allowed_repo_ids").$type<string[] | null>(),
+    allowedServerIds: jsonb("allowed_server_ids").$type<string[] | null>(),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     lastUsedAt: timestamp("last_used_at"),
     expiresAt: timestamp("expires_at"),

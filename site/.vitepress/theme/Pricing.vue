@@ -33,6 +33,7 @@ const included = [
   "Merge & deploy through Dokploy, Coolify, Komodo or Portainer",
   "Deploy guard with rollback, uptime checks, self-healing",
   "Server agent: updates, disks, backups, CrowdSec, Trivy",
+  "MCP for AI assistants, scopes, allowlists and audit trail",
   "GitHub, GitLab, Bitbucket, Gitea and Forgejo",
   "Clients, domains and the monthly report",
   "Team members, roles, two-factor authentication, audit log",
@@ -67,7 +68,11 @@ const faq = [
   },
   {
     q: "Can I switch or cancel?",
-    a: "Any time. Switching is charged or credited for the rest of the month; cancelling ends the plan at the end of the period you paid for.",
+    a: "Any time, from Settings → Billing — no ticket, no sales call. Switching is charged or credited for the rest of the month; cancelling ends the plan at the end of the period you paid for.",
+  },
+  {
+    q: "Do I need a demo or a quote?",
+    a: "No. Plans and prices are on this page. Sign up, pay with Stripe, start watching. Self-hosted is free forever.",
   },
   {
     q: "Invoices and VAT?",
@@ -91,7 +96,8 @@ const faq = [
       <p class="lead">
         A flat price per month for your whole organization — about what the
         server to host it yourself would cost, without maintaining it. Every
-        plan has every feature.
+        plan has every feature. No demos, no seat SKUs, no sales process —
+        Stripe checkout and you are in.
       </p>
     </header>
 

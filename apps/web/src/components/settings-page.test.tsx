@@ -27,9 +27,15 @@ vi.mock("@/lib/api", () => ({
       wazuhUser: null,
       wazuhPasswordSet: false,
       wazuhCaCertSet: false,
+      automationPolicy: {
+        defaultAutoFixCritical: false,
+        allowMcpSecurityFix: true,
+        requirePrReview: false,
+      },
     }),
     updateOrgIntegrations: vi.fn().mockResolvedValue({ ok: true }),
     getApiKeys: vi.fn().mockResolvedValue([]),
+    getServers: vi.fn().mockResolvedValue([]),
   },
 }));
 

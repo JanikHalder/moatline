@@ -29,6 +29,10 @@ import { setupOpenObserve } from "../services/observability-setup";
 import { normalizeBase, whoami } from "../lib/git-host";
 import { forgetStacks, syncStacksForOrg } from "../services/stack-platforms";
 import { randomUUID } from "node:crypto";
+import {
+  DEFAULT_AUTOMATION_POLICY,
+  resolveAutomationPolicy,
+} from "../lib/automation-policy";
 
 /**
  * Settings hold org secrets and can trigger deploys/merges – so, unlike the
@@ -79,6 +83,13 @@ const settingsSchema = z.object({
   pagespeedApiKey: z.string().max(200).optional(),
   notifyLanguage: z.enum(["en", "de"]).optional(),
   weeklyDigest: z.boolean().optional(),
+  automationPolicy: z
+    .object({
+      defaultAutoFixCritical: z.boolean(),
+      allowMcpSecurityFix: z.boolean(),
+      requirePrReview: z.boolean(),
+    })
+    .optional(),
 });
 
 /** Non-secret plain text field: undefined = keep, "" = clear, else set. */
@@ -166,6 +177,7 @@ export const orgSettingsRouter = new Hono<{ Variables: TenantVariables }>()
       hetznerState: (row?.hetznerState ?? null) as HetznerState | null,
       weeklyDigest: row?.weeklyDigest ?? true,
       lastDigestAt: row?.lastDigestAt ?? null,
+      automationPolicy: resolveAutomationPolicy(row?.automationPolicy),
     });
   })
   .put("/", zValidator("json", settingsSchema), async (c) => {
@@ -188,7 +200,10 @@ export const orgSettingsRouter = new Hono<{ Variables: TenantVariables }>()
         return c.json({ error: `${k}: enter an http(s) URL` }, 400);
 
     // Build a partial update: only fields the client actually sent.
-    const patch: Record<string, string | number | boolean | null> = {};
+    const patch: Record<
+      string,
+      string | number | boolean | null | typeof DEFAULT_AUTOMATION_POLICY
+    > = {};
     const setIf = (key: string, val: string | number | null | undefined) => {
       if (val !== undefined) patch[key] = val;
     };
@@ -244,6 +259,9 @@ export const orgSettingsRouter = new Hono<{ Variables: TenantVariables }>()
     if (body.weeklyDigest !== undefined) patch.weeklyDigest = body.weeklyDigest;
     if (body.notifyLanguage !== undefined)
       patch.notifyLanguage = body.notifyLanguage;
+    if (body.automationPolicy !== undefined) {
+      patch.automationPolicy = resolveAutomationPolicy(body.automationPolicy);
+    }
 
     // These URLs are fetched by the server on a schedule: same SSRF rules as
     // live URLs, and the Wazuh API only over TLS.

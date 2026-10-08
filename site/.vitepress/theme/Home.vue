@@ -71,6 +71,21 @@ const never = [
   "From logs, only error lines leave the server — with passwords, tokens, e-mail and IP addresses removed.",
   "Nothing is merged, deployed or restarted unless you turned that on, per repository.",
 ];
+
+const agents = [
+  {
+    what: "MCP for coding agents",
+    text: "Claude, Cursor and other assistants read findings, uptime and servers over MCP — with scopes, optional allowlists and a full audit trail. Fix PRs only when you grant the fix scope.",
+  },
+  {
+    what: "Findings as a task list",
+    text: "Copy a markdown report into your agent, or fetch it over MCP: what to change, why, and how to tell it worked.",
+  },
+  {
+    what: "Guarded automation",
+    text: "Auto-fix opens lockfile-only pull requests. Org policy can require PR review, disable MCP fixes, and default new repos to auto-fix critical CVEs.",
+  },
+];
 </script>
 
 <template>
@@ -82,7 +97,7 @@ const never = [
           {{ brand.name }} watches the code, containers and servers behind your
           Dokploy and Coolify apps. When something is wrong, it opens the pull
           request, ships the fix through your platform and checks the site
-          afterwards.
+          afterwards. No demos, no seat games — Stripe checkout or self-host free.
         </p>
         <div class="actions">
           <a v-if="signupUrl" class="button" :href="signupUrl">Start now</a>
@@ -94,7 +109,9 @@ const never = [
           >
           <a class="text-link" href="/guide/introduction">How it works</a>
         </div>
-        <p class="aside">Open source. Dokploy, Coolify and any Docker host.</p>
+        <p class="aside">
+          Open source. Buy online. Dokploy, Coolify and any Docker host.
+        </p>
       </div>
 
       <figure class="log" aria-label="An example night">
@@ -136,6 +153,16 @@ const never = [
     </section>
 
     <section class="block">
+      <h2>For AI agents &amp; automated code</h2>
+      <dl class="watches">
+        <template v-for="a in agents" :key="a.what">
+          <dt>{{ a.what }}</dt>
+          <dd>{{ a.text }}</dd>
+        </template>
+      </dl>
+    </section>
+
+    <section class="block">
       <h2>What it never does</h2>
       <ul class="never">
         <li v-for="n in never" :key="n">{{ n }}</li>
@@ -160,7 +187,8 @@ const never = [
           <h3>Cloud, from 8 € a month</h3>
           <p>
             Hosted and updated for you in the EU — about what the server to host
-            it yourself would cost, without maintaining it.
+            it yourself would cost, without maintaining it. No sales call: pick
+            a plan, pay with Stripe, cancel anytime.
             <strong>Solo</strong> 8 € (3 servers, 10 repositories),
             <strong>Team</strong> 24 € (15 servers), <strong>Agency</strong> 49
             € (50 servers). Every plan has every feature; Stripe handles

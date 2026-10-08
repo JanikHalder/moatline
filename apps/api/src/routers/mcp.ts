@@ -7,7 +7,11 @@ import { bearerApiKey, hashAgentToken } from "../lib/agent-token";
 import { auditRaw } from "../lib/audit-log";
 import { clientIp } from "../lib/client-ip";
 import { buildCommit } from "../lib/build-info";
-import { MCP_TOOLS } from "../services/mcp-tools";
+import {
+  loadMcpPolicy,
+  MCP_TOOLS,
+  type McpAccess,
+} from "../services/mcp-tools";
 
 const SUPPORTED_VERSIONS = ["2025-06-18", "2025-03-26", "2024-11-05"];
 
@@ -19,9 +23,8 @@ type JsonRpcRequest = {
 };
 
 const INSTRUCTIONS =
-  "Moatline watches this organization's servers (load, updates, CrowdSec, Trivy, Docker apps, backups, open ports), its applications (CVEs in the deployed commit vs. the branch, Nuclei findings on live URLs) and Uptime Kuma monitors. Start with get_overview; findings with fixesItselfAt are handled by the server's automatic updates.";
+  "Moatline watches this organization's servers (load, updates, CrowdSec, Trivy, Docker apps, backups, open ports), its applications (CVEs in the deployed commit vs. the branch, Nuclei findings on live URLs) and Uptime Kuma monitors. Start with get_overview. Use get_findings_report for a markdown task list a coding agent can work through. start_security_fix (fix scope) opens a lockfile-only PR. Findings with fixesItselfAt are handled by the server's automatic updates. API keys may be limited to specific repositories and servers.";
 
-// Per-key budget on top of the global per-IP limit.
 const calls = new Map<string, { count: number; resetAt: number }>();
 function overBudget(keyId: string): boolean {
   const now = Date.now();
@@ -109,7 +112,6 @@ export const mcpRouter = new Hono<{ Variables: TenantVariables }>()
           answers.push(fail(msg?.id, -32600, "Invalid request"));
           continue;
         }
-        // Notifications (no id) get no answer.
         const isNotification = msg.id === undefined;
         const res = await handle(msg, key, c);
         if (!isNotification && res) answers.push(res);
@@ -165,32 +167,79 @@ async function handle(
           content: [
             {
               type: "text",
-              text: `This API key is read-only; ${name} needs the "${tool.scope}" permission.`,
+              text: `This API key cannot run ${name}; it needs the "${tool.scope}" permission.`,
             },
           ],
         });
       }
       const args = (msg.params?.arguments ?? {}) as Record<string, unknown>;
+      const policy = await loadMcpPolicy(key.organizationId);
+      const access: McpAccess = {
+        allowedRepoIds: key.allowedRepoIds ?? null,
+        allowedServerIds: key.allowedServerIds ?? null,
+        policy,
+        apiKeyName: key.name,
+      };
       try {
-        const result = await tool.run(key.organizationId, args);
-        if (tool.scope !== "read") {
-          await auditRaw({
-            organizationId: key.organizationId,
-            action: `mcp.${name}`,
-            ip: clientIp(c),
-            detail: { apiKey: key.name, arguments: args },
-          });
+        const result = await tool.run(key.organizationId, args, access);
+        await auditRaw({
+          organizationId: key.organizationId,
+          action: `mcp.${name}`,
+          userEmail: `mcp:${key.name}`,
+          ip: clientIp(c),
+          detail: {
+            apiKey: key.name,
+            arguments: args,
+            outcome: "ok",
+            source: "mcp",
+          },
+        });
+        if (name === "start_security_fix" && result && typeof result === "object") {
+          const r = result as {
+            started?: boolean;
+            repository?: string;
+            runId?: string;
+          };
+          if (r.started) {
+            await auditRaw({
+              organizationId: key.organizationId,
+              action: "security_fix.started",
+              userEmail: `mcp:${key.name}`,
+              target: {
+                type: "repository",
+                name: r.repository ?? null,
+              },
+              ip: clientIp(c),
+              detail: {
+                source: "mcp",
+                apiKey: key.name,
+                runId: r.runId,
+              },
+            });
+          }
         }
         return ok(msg.id, {
           content: [{ type: "text", text: JSON.stringify(result, null, 1) }],
           structuredContent: Array.isArray(result) ? { items: result } : result,
         });
       } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        await auditRaw({
+          organizationId: key.organizationId,
+          action: `mcp.${name}`,
+          userEmail: `mcp:${key.name}`,
+          ip: clientIp(c),
+          detail: {
+            apiKey: key.name,
+            arguments: args,
+            outcome: "error",
+            error: message.slice(0, 500),
+            source: "mcp",
+          },
+        });
         return ok(msg.id, {
           isError: true,
-          content: [
-            { type: "text", text: e instanceof Error ? e.message : String(e) },
-          ],
+          content: [{ type: "text", text: message }],
         });
       }
     }

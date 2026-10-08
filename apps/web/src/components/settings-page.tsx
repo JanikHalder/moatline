@@ -34,6 +34,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { ApiKeysCard } from "@/components/api-keys-card";
+import { AutomationPolicyCard } from "@/components/automation-policy-card";
 import { formatRelative } from "@/lib/schedule";
 import { PageHeader } from "@/components/page-header";
 import { ErrorAlert } from "@/components/error-alert";
@@ -1049,6 +1050,7 @@ export function SettingsPage() {
       </Card>
 
       <ApiKeysCard />
+      <AutomationPolicyCard />
 
       {/* One save for every section: the API takes the whole patch at once. */}
       <div className="sticky bottom-4 flex items-center justify-end gap-3 rounded-lg border bg-background/95 p-3 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/80">

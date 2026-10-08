@@ -44,6 +44,7 @@ export async function auditRaw(entry: {
   userId?: string | null;
   userEmail?: string | null;
   action: string;
+  target?: AuditTarget | null;
   ip?: string | null;
   detail?: Record<string, unknown> | null;
 }): Promise<void> {
@@ -53,6 +54,9 @@ export async function auditRaw(entry: {
       userId: entry.userId ?? null,
       userEmail: entry.userEmail ?? null,
       action: entry.action,
+      targetType: entry.target?.type ?? null,
+      targetId: entry.target?.id ?? null,
+      targetName: entry.target?.name ?? null,
       ip: entry.ip ?? null,
       detail: entry.detail ?? null,
     });

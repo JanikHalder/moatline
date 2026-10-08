@@ -15,7 +15,9 @@ import {
   perfRuns,
   clients,
   syntheticChecks,
+  orgIntegrations,
 } from "db";
+import { resolveAutomationPolicy } from "../lib/automation-policy";
 import semver from "semver";
 import type { TenantVariables } from "../middleware/tenant";
 import { requireOrganization, requireSession } from "../middleware/tenant";
@@ -547,6 +549,11 @@ export const reposRouter = new Hono<{ Variables: TenantVariables }>()
           ? body.packageJsonPath
           : `${body.packageJsonPath.replace(/\/+$/, "")}/package.json`
         : "package.json";
+    const [integ] = await db
+      .select({ automationPolicy: orgIntegrations.automationPolicy })
+      .from(orgIntegrations)
+      .where(eq(orgIntegrations.organizationId, orgId));
+    const policy = resolveAutomationPolicy(integ?.automationPolicy);
     const [repo] = await db
       .insert(repositories)
       .values({
@@ -555,6 +562,7 @@ export const reposRouter = new Hono<{ Variables: TenantVariables }>()
         name,
         defaultBranch,
         packageJsonPath,
+        autoFixCritical: policy.defaultAutoFixCritical,
       })
       .returning();
     await audit(c, "repo.create", repoTarget(repo!));
@@ -723,6 +731,22 @@ export const reposRouter = new Hono<{ Variables: TenantVariables }>()
         },
         400
       );
+    }
+    if (merged.autoMerge || merged.autoDeploy) {
+      const [integ] = await db
+        .select({ automationPolicy: orgIntegrations.automationPolicy })
+        .from(orgIntegrations)
+        .where(eq(orgIntegrations.organizationId, orgId));
+      const policy = resolveAutomationPolicy(integ?.automationPolicy);
+      if (policy.requirePrReview) {
+        return c.json(
+          {
+            error:
+              "This organization requires pull-request review: auto-merge and auto-deploy are disabled under Settings → Automation.",
+          },
+          400
+        );
+      }
     }
 
     const [repo] = await db
@@ -1047,7 +1071,15 @@ export const reposRouter = new Hono<{ Variables: TenantVariables }>()
         kind: "security",
       })
       .returning();
-    await audit(c, "repo.security_fix", repoTarget(repo));
+    await audit(c, "repo.security_fix", repoTarget(repo), {
+      source: "manual",
+      runId: run?.id,
+    });
+    await audit(c, "security_fix.started", repoTarget(repo), {
+      source: "manual",
+      runId: run?.id,
+      branchName,
+    });
     if (run) {
       console.log(`[api] Manual security-fix: repo=${id} run=${run.id}`);
       runSecurityFix(run.id).catch((err) =>

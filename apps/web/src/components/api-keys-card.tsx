@@ -1,7 +1,12 @@
 import { useEffect, useState } from "react";
 import { Bot, KeyRound, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { api, type ApiKey } from "@/lib/api";
+import {
+  api,
+  type ApiKey,
+  type RepoListItem,
+  type ServerListItem,
+} from "@/lib/api";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -36,22 +41,33 @@ const EXPIRY = [
 
 /**
  * Keys for the MCP endpoint, so Claude (or another assistant) can answer
- * "is anything down?" from this organization's data. Read-only by default.
+ * questions from this organization's data. Scopes and allowlists limit what
+ * each key may see and start.
  */
 export function ApiKeysCard() {
   const [keys, setKeys] = useState<ApiKey[] | null>(null);
+  const [repos, setRepos] = useState<RepoListItem[]>([]);
+  const [servers, setServers] = useState<ServerListItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [scan, setScan] = useState(false);
+  const [fix, setFix] = useState(false);
   const [expiry, setExpiry] = useState("90");
+  const [allowedRepoIds, setAllowedRepoIds] = useState<string[]>([]);
+  const [allowedServerIds, setAllowedServerIds] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [created, setCreated] = useState<string | null>(null);
 
   const load = () =>
-    api
-      .getApiKeys()
-      .then((k) => {
+    Promise.all([
+      api.getApiKeys(),
+      api.getRepos().catch(() => [] as RepoListItem[]),
+      api.getServers().catch(() => [] as ServerListItem[]),
+    ])
+      .then(([k, r, s]) => {
         setKeys(k);
+        setRepos(r);
+        setServers(s);
         setError(null);
       })
       .catch((e) =>
@@ -64,17 +80,32 @@ export function ApiKeysCard() {
 
   const endpoint = `${window.location.origin}/api/mcp`;
 
+  const toggleId = (
+    list: string[],
+    set: (v: string[]) => void,
+    id: string,
+    on: boolean
+  ) => {
+    set(on ? [...new Set([...list, id])] : list.filter((x) => x !== id));
+  };
+
   const create = async () => {
     setBusy(true);
     try {
       const r = await api.createApiKey({
         name: name.trim(),
         scan,
+        fix,
         expiresInDays: expiry === "never" ? null : Number(expiry),
+        allowedRepoIds: allowedRepoIds.length ? allowedRepoIds : null,
+        allowedServerIds: allowedServerIds.length ? allowedServerIds : null,
       });
       setCreated(r.key);
       setName("");
       setScan(false);
+      setFix(false);
+      setAllowedRepoIds([]);
+      setAllowedServerIds([]);
       await load();
     } catch (e) {
       toast.error(
@@ -104,7 +135,7 @@ export function ApiKeysCard() {
         </CardTitle>
         <CardDescription>
           {tx(
-            "Let Claude or another AI assistant read this organization's servers, findings, uptime and repositories over MCP. Read-only unless you allow starting scans; nothing can change settings or touch servers."
+            "Let Claude or another AI assistant read this organization's servers, findings, uptime and repositories over MCP. Choose scopes and optional allowlists; nothing can change settings or touch servers."
           )}
         </CardDescription>
       </CardHeader>
@@ -165,11 +196,20 @@ export function ApiKeysCard() {
                       {k.expiresAt &&
                         !k.revokedAt &&
                         ` · ${tx(expired ? "expired {when}" : "expires {when}", { when: formatRelative(k.expiresAt) ?? "" })}`}
+                      {k.allowedRepoIds?.length
+                        ? ` · ${tx("{n} repositories", { n: k.allowedRepoIds.length })}`
+                        : ""}
+                      {k.allowedServerIds?.length
+                        ? ` · ${tx("{n} servers", { n: k.allowedServerIds.length })}`
+                        : ""}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
                     {k.scopes.includes("scan") && (
                       <Badge variant="warning">{tx("can start scans")}</Badge>
+                    )}
+                    {k.scopes.includes("fix") && (
+                      <Badge variant="warning">{tx("can open fix PRs")}</Badge>
                     )}
                     {k.revokedAt ? (
                       <Badge
@@ -196,42 +236,99 @@ export function ApiKeysCard() {
         )}
 
         {!error && (
-          <div className="grid gap-3 sm:grid-cols-[2fr_1fr_auto] sm:items-end">
-            <div className="grid gap-2">
-              <Label htmlFor="api-key-name">{tx("New key")}</Label>
-              <Input
-                id="api-key-name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder={tx("e.g. Claude on Alex's laptop")}
-              />
+          <div className="grid gap-3">
+            <div className="grid gap-3 sm:grid-cols-[2fr_1fr_auto] sm:items-end">
+              <div className="grid gap-2">
+                <Label htmlFor="api-key-name">{tx("New key")}</Label>
+                <Input
+                  id="api-key-name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder={tx("e.g. Claude on Alex's laptop")}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="api-key-expiry">{tx("Valid for")}</Label>
+                <Select value={expiry} onValueChange={setExpiry}>
+                  <SelectTrigger id="api-key-expiry" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {EXPIRY.map((e) => (
+                      <SelectItem key={e.value} value={e.value}>
+                        {e.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button onClick={create} disabled={busy || !name.trim()}>
+                {busy && <Spinner />}
+                {tx("Create key")}
+              </Button>
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="api-key-expiry">{tx("Valid for")}</Label>
-              <Select value={expiry} onValueChange={setExpiry}>
-                <SelectTrigger id="api-key-expiry" className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {EXPIRY.map((e) => (
-                    <SelectItem key={e.value} value={e.value}>
-                      {e.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <Button onClick={create} disabled={busy || !name.trim()}>
-              {busy && <Spinner />}
-              {tx("Create key")}
-            </Button>
-            <label className="flex items-center gap-2 sm:col-span-3">
+            <label className="flex items-center gap-2">
               <Checkbox
                 checked={scan}
                 onCheckedChange={(v) => setScan(v === true)}
               />
               {tx("Also allow starting Nuclei and repository scans")}
             </label>
+            <label className="flex items-center gap-2">
+              <Checkbox
+                checked={fix}
+                onCheckedChange={(v) => setFix(v === true)}
+              />
+              {tx("Also allow opening security-fix pull requests")}
+            </label>
+            {repos.length > 0 && (
+              <div className="space-y-2">
+                <Label>
+                  {tx("Limit to repositories (empty = all)")}
+                </Label>
+                <div className="flex max-h-36 flex-col gap-1 overflow-y-auto rounded-md border p-2">
+                  {repos.map((r) => (
+                    <label key={r.id} className="flex items-center gap-2">
+                      <Checkbox
+                        checked={allowedRepoIds.includes(r.id)}
+                        onCheckedChange={(v) =>
+                          toggleId(
+                            allowedRepoIds,
+                            setAllowedRepoIds,
+                            r.id,
+                            v === true
+                          )
+                        }
+                      />
+                      <span className="truncate">{r.name}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+            {servers.length > 0 && (
+              <div className="space-y-2">
+                <Label>{tx("Limit to servers (empty = all)")}</Label>
+                <div className="flex max-h-36 flex-col gap-1 overflow-y-auto rounded-md border p-2">
+                  {servers.map((s) => (
+                    <label key={s.id} className="flex items-center gap-2">
+                      <Checkbox
+                        checked={allowedServerIds.includes(s.id)}
+                        onCheckedChange={(v) =>
+                          toggleId(
+                            allowedServerIds,
+                            setAllowedServerIds,
+                            s.id,
+                            v === true
+                          )
+                        }
+                      />
+                      <span className="truncate">{s.name}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </CardContent>

@@ -847,10 +847,18 @@ export type ApiKey = {
   name: string;
   prefix: string;
   scopes: string[];
+  allowedRepoIds: string[] | null;
+  allowedServerIds: string[] | null;
   createdAt: string;
   lastUsedAt: string | null;
   expiresAt: string | null;
   revokedAt: string | null;
+};
+
+export type AutomationPolicy = {
+  defaultAutoFixCritical: boolean;
+  allowMcpSecurityFix: boolean;
+  requirePrReview: boolean;
 };
 
 export type AuditEntry = {
@@ -1002,6 +1010,7 @@ export type OrgIntegrations = {
     matched: number;
     error: string | null;
   } | null;
+  automationPolicy: AutomationPolicy;
 };
 
 export type OrgIntegrationsUpdate = Partial<{
@@ -1039,6 +1048,7 @@ export type OrgIntegrationsUpdate = Partial<{
   pagespeedApiKey: string;
   notifyLanguage: "en" | "de";
   weeklyDigest: boolean;
+  automationPolicy: AutomationPolicy;
 }>;
 
 export type SchedulerStatus = {
@@ -1775,12 +1785,18 @@ export const api = {
   createApiKey: (body: {
     name: string;
     scan: boolean;
+    fix: boolean;
     expiresInDays: number | null;
+    allowedRepoIds?: string[] | null;
+    allowedServerIds?: string[] | null;
   }) =>
-    fetchApi<{ id: string; key: string; scopes: string[] }>(
-      "/api/org/api-keys",
-      { method: "POST", body: JSON.stringify(body) }
-    ),
+    fetchApi<{
+      id: string;
+      key: string;
+      scopes: string[];
+      allowedRepoIds: string[] | null;
+      allowedServerIds: string[] | null;
+    }>("/api/org/api-keys", { method: "POST", body: JSON.stringify(body) }),
   revokeApiKey: (id: string) =>
     fetchApi<{ revoked: boolean }>(`/api/org/api-keys/${id}`, {
       method: "DELETE",

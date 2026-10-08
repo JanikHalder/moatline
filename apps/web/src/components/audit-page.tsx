@@ -42,6 +42,22 @@ const LABEL: Record<string, string> = {
   "repo.security_fix": "Started security fix",
   "repo.update_packages": "Started package update",
   "repo.deploy": "Triggered deploy",
+  "api_key.create": "Created API key",
+  "api_key.revoke": "Revoked API key",
+  "security_fix.started": "Security fix started",
+  "mcp.get_overview": "MCP: overview",
+  "mcp.list_servers": "MCP: list servers",
+  "mcp.get_server": "MCP: get server",
+  "mcp.list_findings": "MCP: list findings",
+  "mcp.list_uptime": "MCP: list uptime",
+  "mcp.list_repositories": "MCP: list repositories",
+  "mcp.get_repository": "MCP: get repository",
+  "mcp.list_members": "MCP: list members",
+  "mcp.get_audit_log": "MCP: audit log",
+  "mcp.start_nuclei_scan": "MCP: Nuclei scan",
+  "mcp.start_repository_scan": "MCP: repository scan",
+  "mcp.get_findings_report": "MCP: findings report",
+  "mcp.start_security_fix": "MCP: security fix",
 };
 
 /** Actions that hand out access or change what runs unattended. */
@@ -56,7 +72,20 @@ const SENSITIVE = new Set([
   "member.create",
   "repo.delete",
   "repo.deploy",
+  "api_key.create",
+  "mcp.start_nuclei_scan",
+  "mcp.start_repository_scan",
+  "mcp.start_security_fix",
+  "security_fix.started",
 ]);
+
+function isAgentAction(action: string): boolean {
+  return (
+    action.startsWith("mcp.") ||
+    action.startsWith("api_key.") ||
+    action.startsWith("security_fix.")
+  );
+}
 
 function describe(e: AuditEntry): string | null {
   const d = (e.detail ?? {}) as Record<string, unknown>;
@@ -76,6 +105,7 @@ export function AuditPage() {
   const [error, setError] = useState<string | null>(null);
   const [more, setMore] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [agentsOnly, setAgentsOnly] = useState(false);
 
   const load = async (before?: string) => {
     setLoading(true);
@@ -95,26 +125,46 @@ export function AuditPage() {
     void load();
   }, []);
 
+  const visible =
+    entries && agentsOnly
+      ? entries.filter((e) => isAgentAction(e.action))
+      : entries;
+
   return (
     <div className="space-y-6">
       <PageHeader
         title={tx("Audit log")}
         description={tx(
-          "Who did what, when and from where — sign-ins, access to servers, integrations, members and unattended actions. Secret values are never recorded."
+          "Who did what, when and from where — sign-ins, access to servers, integrations, members, MCP tools and unattended actions. Secret values are never recorded."
         )}
       />
+      {entries && entries.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            variant={agentsOnly ? "default" : "outline"}
+            onClick={() => setAgentsOnly((v) => !v)}
+          >
+            {tx("Agents & automation")}
+          </Button>
+        </div>
+      )}
       {error && <ErrorAlert>{error}</ErrorAlert>}
       {!entries && !error ? (
         <Skeleton className="h-64 rounded-lg" />
-      ) : entries && entries.length === 0 ? (
+      ) : visible && visible.length === 0 ? (
         <Card>
           <EmptyState
             icon={ScrollText}
-            title={tx("Nothing recorded yet")}
+            title={
+              agentsOnly
+                ? tx("No agent or automation events yet")
+                : tx("Nothing recorded yet")
+            }
             className="py-12"
           />
         </Card>
-      ) : entries ? (
+      ) : visible ? (
         <Card className="gap-0 overflow-hidden py-0">
           <Table>
             <TableHeader>
@@ -137,7 +187,7 @@ export function AuditPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {entries.map((e) => (
+              {visible.map((e) => (
                 <TableRow key={e.id}>
                   <TableCell
                     className="hidden pl-6 text-xs text-muted-foreground @2xl/main:table-cell"
@@ -208,7 +258,7 @@ export function AuditPage() {
                 size="sm"
                 disabled={loading}
                 onClick={() =>
-                  void load(entries[entries.length - 1]?.createdAt)
+                  void load(entries?.[entries.length - 1]?.createdAt)
                 }
               >
                 {tx("Load older")}
