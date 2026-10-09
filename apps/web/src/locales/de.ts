@@ -574,8 +574,8 @@ export const de: Record<string, string> = {
     "Ein Befehl richtet alles ein. Funktioniert auf einem neuen Server und auf einem, auf dem schon eure Apps laufen.",
   "Only an owner or admin can generate install commands.":
     "Nur Owner oder Admins können Install-Befehle erzeugen.",
-  "Only firewall, fail2ban and swap — leave SSH authentication as it is":
-    "Nur Firewall, fail2ban und Swap — SSH-Anmeldung unverändert lassen",
+  "Only firewall, fail2ban, swap and Docker logs — leave SSH authentication as it is":
+    "Nur Firewall, fail2ban, Swap und Docker-Logs — SSH-Anmeldung unverändert lassen",
   "Only for apps that build without a database — Payload and Next.js pages that render from their database fail here, because the check never gets credentials. Runs at low priority, one at a time.":
     "Nur für Apps, die ohne Datenbank bauen — Payload- und Next.js-Seiten, die aus ihrer Datenbank rendern, scheitern hier, weil der Check nie Zugangsdaten bekommt. Läuft mit niedriger Priorität, einer nach dem anderen.",
   "Only on a server meant for builds (e.g. your Dokploy build server). Installs a self-hosted runner that builds every pull request with an empty throwaway database — what Moatline cannot do for Payload/Next.js apps. Set the repository's check to “None” and add the workflow from its settings; auto-merge then waits for it.":
@@ -740,8 +740,8 @@ export const de: Record<string, string> = {
   "Trivy is not installed.": "Trivy ist nicht installiert.",
   Type: "Typ",
   "Typecheck (recommended)": "Typecheck (empfohlen)",
-  "UFW firewall (SSH, 80, 443 plus your ports), fail2ban, swap if none is set, SSH with keys only. On a server that already has firewall rules or swap, existing setup is only shown, never replaced.":
-    "UFW-Firewall (SSH, 80, 443 plus deine Ports), fail2ban, Swap falls noch keiner eingerichtet ist, SSH nur mit Keys. Auf einem Server mit bestehender Firewall oder Swap wird das Bestehende nur angezeigt, nie ersetzt.",
+  "UFW firewall (SSH, 80, 443 plus your ports), fail2ban, swap if none is set, SSH with keys only, Docker log rotate (10 MB × 3) and truncate oversized container logs without restarting Docker. On a server that already has firewall rules or swap, existing setup is only shown, never replaced.":
+    "UFW-Firewall (SSH, 80, 443 plus deine Ports), fail2ban, Swap falls noch keiner eingerichtet ist, SSH nur mit Keys, Docker-Log-Rotation (10 MB × 3) und Truncate großer Container-Logs ohne Docker-Neustart. Auf einem Server mit bestehender Firewall oder Swap wird das Bestehende nur angezeigt, nie ersetzt.",
   "Unused packages": "Ungenutzte Pakete",
   Up: "Online",
   "Update packages": "Pakete aktualisieren",
@@ -791,6 +791,16 @@ export const de: Record<string, string> = {
   "common ports (SSH, web, databases, Docker API, Redis, admin panels…). Expected:":
     "gängige Ports (SSH, Web, Datenbanken, Docker-API, Redis, Admin-Panels…). Erwartet:",
   "config ok": "Konfig ok",
+  "Deploy image": "Deploy-Image",
+  "Download howto (.md)": "Howto herunterladen (.md)",
+  "Dockerfile copies standalone": "Dockerfile kopiert standalone",
+  "no next.config": "keine next.config",
+  "output: standalone": "output: standalone",
+  "standalone ok": "standalone ok",
+  "start → standalone server": "start → standalone-Server",
+  "Whether Next.js builds a small standalone image for Dokploy — large images fill the host.":
+    "Ob Next.js ein kleines Standalone-Image für Dokploy baut — große Images füllen den Host.",
+  "{n} deploy issues": "{n} Deploy-Probleme",
   "docker group (= root)": "Docker-Gruppe (= root)",
   "download command": "Download-Befehl",
   "e.g. apps/web — leave empty for repo root":
@@ -1349,6 +1359,11 @@ export const de: Record<string, string> = {
   "Remove unused images": "Ungenutzte Images löschen",
   "Clear the build cache?": "Build-Cache leeren?",
   "Remove unused images?": "Ungenutzte Images löschen?",
+  "Stopped containers removed": "Gestoppte Container gelöscht",
+  "Remove stopped containers": "Gestoppte Container löschen",
+  "Remove stopped containers?": "Gestoppte Container löschen?",
+  "Removes containers that are not running: leftovers of failed deploys and crashed builds. A stopped app is recreated by its next deploy. Running apps and volumes are not touched.":
+    "Löscht Container, die nicht laufen: Reste fehlgeschlagener Deploys und abgestürzter Builds. Eine gestoppte App wird beim nächsten Deploy neu angelegt. Laufende Apps und Volumes bleiben unberührt.",
   "Safe: running apps are not touched. The next build of each app takes a little longer.":
     "Unbedenklich: Laufende Apps bleiben unberührt. Der nächste Build jeder App dauert etwas länger.",
   "Removes every image no container uses — including older versions a Dokploy rollback would go back to. Running apps and volumes are not touched.":

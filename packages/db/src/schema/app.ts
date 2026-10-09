@@ -104,6 +104,8 @@ export const repositories = pgTable(
     // Read-only checks of the live site from outside (exposed files, open
     // Payload endpoints, security headers). See services/site-probe.
     siteProbe: jsonb("site_probe"),
+    // Deploy footprint on Dokploy: Next.js standalone, etc. See deploy-check.
+    deployCheck: jsonb("deploy_check"),
     // The server this application runs on. Lets the server's live-facing
     // findings (Nuclei against the live URL, Uptime Kuma monitors) be shown
     // where they matter: on the application they describe.

@@ -106,6 +106,7 @@ import { ChecksCard } from "@/components/checks-card";
 import { CodeBlock, FindingsTable } from "@/components/server-ui";
 import { BranchSelect } from "@/components/branch-select";
 import { ConfigCard } from "@/components/config-status";
+import { DeployCheckCard } from "@/components/deploy-check-card";
 import { SiteProbeCard } from "@/components/site-probe-card";
 import { PerfCard } from "@/components/perf-card";
 import { cn } from "@/lib/utils";
@@ -2297,6 +2298,7 @@ export function RepoDetail() {
           {!(
             repo.liveChecks ||
             repo.configCheck ||
+            repo.deployCheck?.next.usesNext ||
             repo.liveUrl ||
             repo.dokployAppName
           ) ? (
@@ -2312,6 +2314,9 @@ export function RepoDetail() {
             <>
               {(repo.liveChecks || repo.configCheck || repo.liveUrl) && (
                 <ConfigCard repo={repo} />
+              )}
+              {repo.deployCheck?.next.usesNext && (
+                <DeployCheckCard repoId={repo.id} check={repo.deployCheck} />
               )}
               {repo.liveUrl && (
                 <SiteProbeCard repoId={repo.id} initial={repo.siteProbe} />

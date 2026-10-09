@@ -1342,6 +1342,27 @@ export const reposRouter = new Hono<{ Variables: TenantVariables }>()
     c.header("content-disposition", `attachment; filename="${file}"`);
     return c.body(md);
   })
+  // How-to markdown referenced by deploy-check findings (e.g. next-standalone).
+  .get("/:id/howto/:name", async (c) => {
+    const orgId = requireOrganization(c);
+    if (orgId instanceof Response) return orgId;
+    const id = c.req.param("id");
+    const name = c.req.param("name");
+    if (name !== "next-standalone.md")
+      return c.json({ error: "Howto not found" }, 404);
+    const [repo] = await db
+      .select({ id: repositories.id })
+      .from(repositories)
+      .where(
+        and(eq(repositories.id, id), eq(repositories.organizationId, orgId))
+      );
+    if (!repo) return c.json({ error: "Repository not found" }, 404);
+    const { readStandaloneHowto } = await import("../services/deploy-check");
+    const md = readStandaloneHowto();
+    c.header("content-type", "text/markdown; charset=utf-8");
+    c.header("content-disposition", `attachment; filename="${name}"`);
+    return c.body(md);
+  })
   // Lighthouse history of the live site.
   .get("/:id/perf-runs", async (c) => {
     const orgId = requireOrganization(c);

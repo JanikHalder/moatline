@@ -757,21 +757,22 @@ export async function databaseDetails(opts: {
 
 /**
  * Free disk space on a Dokploy server: the build cache (safe, only slows the
- * next build) or every unused image (also the ones a rollback would use).
- * Volumes are never touched.
+ * next build), every unused image (also the ones a rollback would use) or
+ * the stopped containers (failed deploy leftovers). Volumes are never touched.
  */
 export async function cleanDocker(opts: {
   baseUrl: string;
   token: string;
-  what: "builder" | "images";
+  what: "builder" | "images" | "containers";
   /** Dokploy's remote server; omitted for the Dokploy host itself. */
   serverId: string | null;
 }): Promise<DeployResult> {
   const base = opts.baseUrl.replace(/\/+$/, "");
-  const path =
-    opts.what === "builder"
-      ? "settings.cleanDockerBuilder"
-      : "settings.cleanUnusedImages";
+  const path = {
+    builder: "settings.cleanDockerBuilder",
+    images: "settings.cleanUnusedImages",
+    containers: "settings.cleanStoppedContainers",
+  }[opts.what];
   let res: Response;
   try {
     res = await fetch(`${base}/api/${path}`, {

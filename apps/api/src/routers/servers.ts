@@ -928,7 +928,10 @@ export const serversRouter = new Hono<{ Variables: TenantVariables }>()
   // Free disk space through Dokploy: build cache or unused images.
   .post(
     "/:id/docker-cleanup",
-    zValidator("json", z.object({ what: z.enum(["builder", "images"]) })),
+    zValidator(
+      "json",
+      z.object({ what: z.enum(["builder", "images", "containers"]) })
+    ),
     async (c) => {
       const orgId = requireSession(c);
       if (orgId instanceof Response) return orgId;

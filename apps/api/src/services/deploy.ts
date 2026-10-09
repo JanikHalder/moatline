@@ -14,6 +14,7 @@ import { notify } from "../lib/notify";
 import { watchDeployLive } from "./live-check";
 import { guardDeploy } from "./deploy-guard";
 import { emitEvent } from "../lib/events";
+import { maybeCleanBeforeDeploy } from "./docker-auto-clean";
 
 export type DokployConfig = { baseUrl: string; token: string };
 
@@ -138,6 +139,25 @@ export async function deployRepository(
       ok: false,
       error: `${p.label} is not configured for this organization.`,
     };
+
+  // Disk already tight: clear Docker junk before the build fills it further.
+  const disk = await maybeCleanBeforeDeploy(
+    repo.organizationId,
+    repo.serverId
+  ).catch((e) => {
+    console.error("[api] pre-deploy docker clean failed:", e);
+    return { blockedReason: null };
+  });
+  // Unattended deploys (auto-update, security fix) stop on a full disk; a
+  // manual deploy is the user's call.
+  if (disk.blockedReason && updateRunId) {
+    await notify(repo.organizationId, {
+      type: "workflow_failed",
+      title: `Deploy of ${repo.name} held back`,
+      message: disk.blockedReason,
+    }).catch(() => {});
+    return { ok: false, error: disk.blockedReason };
+  }
 
   const [deployRow] = await db
     .insert(deployRuns)

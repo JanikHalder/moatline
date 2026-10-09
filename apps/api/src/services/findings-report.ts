@@ -11,6 +11,8 @@ import {
   vulnerabilities,
 } from "db";
 import type { ConfigCheck } from "./config-check";
+import type { DeployCheck } from "./deploy-check";
+import { readStandaloneHowto } from "./deploy-check";
 import type { SiteProbe } from "./site-probe";
 import { budgetFailures } from "./perf";
 
@@ -32,6 +34,7 @@ export type FindingsData = {
     | "liveChecks"
     | "configCheck"
     | "siteProbe"
+    | "deployCheck"
   >;
   scan: { startedAt: Date; ref: string | null; target: string } | null;
   vulns: Vuln[];
@@ -209,11 +212,28 @@ export function renderFindings(d: FindingsData): string {
       `- [ ] ${i.required ? "" : "(recommended) "}Set \`${i.names.join("` or `")}\` in the Dokploy application — ${i.why}`
     );
 
+  // Deploy footprint (Next.js standalone, …)
+  const deploy = repo.deployCheck as DeployCheck | null;
+  const deployFindings = deploy?.findings ?? [];
+  if (deployFindings.length) {
+    out.push("");
+    out.push(`## 3b. Deploy image (${deployFindings.length})`);
+    out.push("");
+    out.push(
+      "These keep Dokploy images small so shared hosts do not fill up. Follow the howto at the end of this file."
+    );
+    out.push("");
+    for (const f of deployFindings)
+      out.push(
+        `- [ ] **${f.severity}** ${f.title} — ${f.detail} (howto: \`${f.howto}\`)`
+      );
+  }
+
   // Site security (outside view)
   const probe = repo.siteProbe as SiteProbe | null;
   if (probe?.findings.length) {
     out.push("");
-    out.push(`## 3b. Site security (${probe.findings.length})`);
+    out.push(`## 3c. Site security (${probe.findings.length})`);
     out.push("");
     for (const f of probe.findings)
       out.push(`- [ ] **${f.severity}** ${f.title} — ${f.detail} (${f.url})`);
@@ -224,7 +244,7 @@ export function renderFindings(d: FindingsData): string {
   if (failures.length) {
     out.push("");
     out.push(
-      `## 3c. Performance (mobile Lighthouse ${d.perf!.performance ?? "?"})`
+      `## 3d. Performance (mobile Lighthouse ${d.perf!.performance ?? "?"})`
     );
     out.push("");
     out.push(
@@ -266,6 +286,15 @@ export function renderFindings(d: FindingsData): string {
     out.push(
       `- [ ] The deploy of ${dep.triggeredAt.toISOString()} did not go live cleanly: ${dep.guardDetail ?? dep.liveDetail ?? dep.guard}. Reproduce with a production build (\`next build && next start\`) and check the Dokploy build log.`
     );
+  }
+
+  // Howtos referenced above — full markdown so the agent does not need Moatline.
+  const howtoIds = [...new Set(deployFindings.map((f) => f.howto))];
+  if (howtoIds.includes("next-standalone.md")) {
+    out.push("");
+    out.push("---");
+    out.push("");
+    out.push(readStandaloneHowto().trim());
   }
 
   out.push("");

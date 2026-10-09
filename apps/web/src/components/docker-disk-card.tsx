@@ -24,7 +24,7 @@ import { formatBytes } from "@/components/server-ui";
 import { formatRelative } from "@/lib/schedule";
 import { useT } from "@/lib/i18n";
 
-type What = "builder" | "images";
+type What = "builder" | "images" | "containers";
 
 /**
  * What Docker keeps on the disk and what of it is unused — with a cleanup
@@ -51,7 +51,9 @@ export function DockerDiskCard({ server }: { server: ServerDetail }) {
       toast.success(
         what === "builder"
           ? t("Build cache cleared")
-          : t("Unused images removed"),
+          : what === "images"
+            ? t("Unused images removed")
+            : t("Stopped containers removed"),
         {
           description: t(
             "The next agent report (within an hour) shows the new sizes."
@@ -118,6 +120,15 @@ export function DockerDiskCard({ server }: { server: ServerDetail }) {
             <Trash2 />
             {t("Remove unused images")}
           </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!d.containers?.reclaimableBytes}
+            onClick={() => setConfirm("containers")}
+          >
+            <Trash2 />
+            {t("Remove stopped containers")}
+          </Button>
         </div>
       </CardContent>
       <AlertDialog
@@ -129,29 +140,37 @@ export function DockerDiskCard({ server }: { server: ServerDetail }) {
             <AlertDialogTitle>
               {confirm === "builder"
                 ? t("Clear the build cache?")
-                : t("Remove unused images?")}
+                : confirm === "images"
+                  ? t("Remove unused images?")
+                  : t("Remove stopped containers?")}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {confirm === "builder"
                 ? t(
                     "Safe: running apps are not touched. The next build of each app takes a little longer."
                   )
-                : t(
-                    "Removes every image no container uses — including older versions a Dokploy rollback would go back to. Running apps and volumes are not touched."
-                  )}
+                : confirm === "images"
+                  ? t(
+                      "Removes every image no container uses — including older versions a Dokploy rollback would go back to. Running apps and volumes are not touched."
+                    )
+                  : t(
+                      "Removes containers that are not running: leftovers of failed deploys and crashed builds. A stopped app is recreated by its next deploy. Running apps and volumes are not touched."
+                    )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={busy}>{t("Cancel")}</AlertDialogCancel>
             <Button
-              variant={confirm === "images" ? "destructive" : "default"}
+              variant={confirm === "builder" ? "default" : "destructive"}
               disabled={busy}
               onClick={() => confirm && run(confirm)}
             >
               {busy ? <Spinner /> : <Trash2 />}
               {confirm === "builder"
                 ? t("Clear build cache")
-                : t("Remove unused images")}
+                : confirm === "images"
+                  ? t("Remove unused images")
+                  : t("Remove stopped containers")}
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>

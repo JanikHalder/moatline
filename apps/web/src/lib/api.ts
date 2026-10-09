@@ -1100,6 +1100,26 @@ export type SiteProbe = {
   }>;
 };
 
+/** Deploy footprint: Next.js standalone, etc. */
+export type DeployCheck = {
+  checkedAt: string;
+  next: {
+    usesNext: boolean;
+    configStandalone: boolean | null;
+    startUsesStandalone: boolean;
+    dockerfileStandalone: boolean;
+    missing: boolean;
+    startMismatch: boolean;
+  };
+  findings: Array<{
+    id: string;
+    severity: "high" | "medium" | "low";
+    title: string;
+    detail: string;
+    howto: string;
+  }>;
+};
+
 /** One Lighthouse run (PageSpeed Insights) of a live site. */
 export type PerfRun = {
   id: string;
@@ -1202,6 +1222,7 @@ export type RepoListItem = LiveState & {
   liveChecks?: LiveChecks | null;
   configCheck?: ConfigCheck | null;
   siteProbe?: SiteProbe | null;
+  deployCheck?: DeployCheck | null;
   /** The latest mobile Lighthouse run, in short. */
   perf?: {
     performance: number | null;
@@ -1268,6 +1289,7 @@ export type Repo = LiveState & {
   liveChecks?: LiveChecks | null;
   configCheck?: ConfigCheck | null;
   siteProbe?: SiteProbe | null;
+  deployCheck?: DeployCheck | null;
   dokployApplicationId: string | null;
   coolifyAppUuid?: string | null;
   platformKind?: string | null;
@@ -1503,6 +1525,8 @@ export const api = {
     fetchApi<SiteProbe>(`/api/repos/${repoId}/site-probe`, { method: "POST" }),
   getFindingsMarkdown: (repoId: string) =>
     fetchText(`/api/repos/${repoId}/findings.md`),
+  getHowtoMarkdown: (repoId: string, name: string) =>
+    fetchText(`/api/repos/${repoId}/howto/${encodeURIComponent(name)}`),
   getRepos: () => fetchApi<RepoListItem[]>("/api/repos"),
   getSchedulerStatus: () => fetchApi<SchedulerStatus>("/api/system/scheduler"),
   getSystemMode: () => fetchApi<SystemMode>("/api/system/mode"),
@@ -2057,7 +2081,7 @@ export const api = {
     fetchApi<ServerMetricPoint[]>(`/api/servers/${id}/metrics?hours=${hours}`),
   getServerScanRuns: (id: string) =>
     fetchApi<ServerScanRun[]>(`/api/servers/${id}/scan-runs`),
-  cleanDocker: (id: string, what: "builder" | "images") =>
+  cleanDocker: (id: string, what: "builder" | "images" | "containers") =>
     fetchApi<{ ok: true }>(`/api/servers/${id}/docker-cleanup`, {
       method: "POST",
       body: JSON.stringify({ what }),

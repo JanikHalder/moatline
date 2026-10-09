@@ -120,7 +120,7 @@ export async function cleanServerDocker(
   organizationId: string,
   serverId: string,
   rows: Array<{ id: string; lastReport: unknown; address?: string | null }>,
-  what: "builder" | "images"
+  what: "builder" | "images" | "containers"
 ): Promise<{ ok: true } | { ok: false; error: string; status: 400 | 502 }> {
   const cfg = await resolveDokployConfig(organizationId);
   if (!cfg.ok) return { ok: false, error: cfg.error, status: 400 };
@@ -141,9 +141,13 @@ export async function cleanServerDocker(
     return {
       ok: false,
       error:
-        (what === "builder"
-          ? "Moatline cannot tell which Dokploy server this is. Clear it on the server: docker builder prune -af"
-          : "Moatline cannot tell which Dokploy server this is. Clear it on the server: docker image prune -af") +
+        `Moatline cannot tell which Dokploy server this is. Clear it on the server: ${
+          {
+            builder: "docker builder prune -af",
+            images: "docker image prune -af",
+            containers: "docker container prune -f",
+          }[what]
+        }` +
         " — or give the server the same address as in Dokploy (Remote Servers).",
       status: 400,
     };

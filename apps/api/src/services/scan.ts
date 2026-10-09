@@ -2,13 +2,7 @@ import pLimit from "p-limit";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  db,
-  scans,
-  packageFindings,
-  vulnerabilities,
-  repositories,
-} from "db";
+import { db, scans, packageFindings, vulnerabilities, repositories } from "db";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Under tsx this file sits in src/services; in the production bundle it sits
@@ -37,6 +31,8 @@ import { findLockfile } from "../lib/fix-strategy";
 import { notify } from "../lib/notify";
 import { startSecurityFixIfIdle } from "./queue-security-fix";
 import { buildStack } from "../lib/stack";
+import { hasNextDependency, nextConfigFileNames } from "../lib/next-standalone";
+import { buildDeployCheck } from "./deploy-check";
 
 const npmConcurrency = 10;
 const NPM_FETCH_TIMEOUT_MS = 15_000;
@@ -96,6 +92,7 @@ async function fetchPackageJson(
     const pkg = JSON.parse(res.text) as {
       dependencies?: Record<string, string>;
       devDependencies?: Record<string, string>;
+      scripts?: Record<string, string>;
     };
     return { ok: true, pkg };
   } catch {
@@ -309,6 +306,35 @@ async function readStack(
     dockerfile: await inDirs("Dockerfile"),
     nvmrc: (await inDirs(".nvmrc")) ?? (await inDirs(".node-version")),
   });
+}
+
+/** Next.js standalone / Dockerfile footprint for Dokploy image size. */
+async function readDeployCheck(
+  h: RepoHandle,
+  ref: string,
+  pathToPackageJson: string,
+  pkg: {
+    dependencies?: Record<string, string>;
+    devDependencies?: Record<string, string>;
+    scripts?: Record<string, string>;
+  }
+) {
+  if (!hasNextDependency(pkg)) {
+    return buildDeployCheck(pkg, null, null);
+  }
+  let nextConfig: string | null = null;
+  for (const name of nextConfigFileNames(pathToPackageJson)) {
+    nextConfig = await fetchRepoText(h, ref, name);
+    if (nextConfig != null) break;
+  }
+  const dir = path.posix.dirname(pathToPackageJson);
+  let dockerfile: string | null = null;
+  for (const d of dir === "." ? ["."] : [dir, "."]) {
+    const name = d === "." ? "Dockerfile" : `${d}/Dockerfile`;
+    dockerfile = await fetchRepoText(h, ref, name);
+    if (dockerfile != null) break;
+  }
+  return buildDeployCheck(pkg, nextConfig, dockerfile);
 }
 
 async function getLatestVersion(packageName: string): Promise<string | null> {
@@ -542,7 +568,8 @@ export async function runScan(
       return scanId;
     }
     const pkg = result.pkg;
-    // The version overview follows the branch, not a deployed commit.
+    // The version overview and deploy footprint follow the branch, not a
+    // deployed commit.
     if (!commit) {
       void readStack(handle, ref, pathToPackageJson, pkg)
         .then((stack) =>
@@ -552,6 +579,14 @@ export async function runScan(
             .where(eq(repositories.id, repositoryId))
         )
         .catch((e) => console.error(`[api] Scan ${scanId} stack:`, e));
+      void readDeployCheck(handle, ref, pathToPackageJson, pkg)
+        .then((deployCheck) =>
+          db
+            .update(repositories)
+            .set({ deployCheck })
+            .where(eq(repositories.id, repositoryId))
+        )
+        .catch((e) => console.error(`[api] Scan ${scanId} deploy-check:`, e));
     }
     const deps = {
       ...(pkg.dependencies ?? {}),

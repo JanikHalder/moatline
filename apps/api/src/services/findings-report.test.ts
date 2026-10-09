@@ -22,6 +22,26 @@ const data: FindingsData = {
     liveCommit: "752de05",
     liveChecks: { email: false, storage: true },
     siteProbe: null,
+    deployCheck: {
+      checkedAt: "2026-10-03T08:00:00Z",
+      next: {
+        usesNext: true,
+        configStandalone: false,
+        startUsesStandalone: false,
+        dockerfileStandalone: false,
+        missing: true,
+        startMismatch: false,
+      },
+      findings: [
+        {
+          id: "next:standalone",
+          severity: "high",
+          title: "Next.js is not built as standalone",
+          detail: "Without standalone Dokploy images stay large.",
+          howto: "next-standalone.md",
+        },
+      ],
+    },
     configCheck: {
       checkedAt: "2026-10-03T08:00:00Z",
       items: [
@@ -86,6 +106,10 @@ describe("renderFindings", () => {
     expect(md).toContain("`email: false`");
     expect(md).toContain(
       "Set `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY` in the Dokploy application"
+    );
+    expect(md).toContain("Next.js is not built as standalone");
+    expect(md).toContain(
+      "# Fix: Next.js standalone for smaller Dokploy images"
     );
     expect(md).not.toMatch(/secret value|password/i);
   });
