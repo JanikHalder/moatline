@@ -1,5 +1,5 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
-import { db, repositories, scans, vulnerabilities } from "db";
+import { db, repositories, scans, servers, vulnerabilities } from "db";
 import { runSecurityFixWhenIdle } from "./queue-security-fix";
 
 /**
@@ -9,6 +9,40 @@ import { runSecurityFixWhenIdle } from "./queue-security-fix";
  * Merge/deploy still respect org requirePrReview and the non-breaking gate.
  */
 export const OVERNIGHT_CRON = "15 2 * * *";
+
+/** Overnight fixes build on the repo's server: skip it when the disk is this full. */
+export const OVERNIGHT_DISK_SKIP_PCT = 80;
+/** Older disk readings say nothing about tonight; those repos are not skipped. */
+export const OVERNIGHT_DISK_REPORT_MAX_AGE_MS = 6 * 60 * 60 * 1000;
+
+/** Pure gate — exported for tests. */
+export function shouldSkipOvernightForDisk(opts: {
+  diskPct: number | null | undefined;
+  reportAt: Date | string | null | undefined;
+  now?: number;
+}): boolean {
+  if (opts.diskPct == null || opts.diskPct < OVERNIGHT_DISK_SKIP_PCT) return false;
+  if (!opts.reportAt) return false;
+  const age = (opts.now ?? Date.now()) - new Date(opts.reportAt).getTime();
+  return age <= OVERNIGHT_DISK_REPORT_MAX_AGE_MS;
+}
+
+/** Disk reading of the repo's server, or null when the repo has no server. */
+async function repoDiskSkipReason(repoId: string): Promise<string | null> {
+  const [row] = await db
+    .select({
+      lastReport: servers.lastReport,
+      reportAt: servers.lastReportAt,
+    })
+    .from(repositories)
+    .innerJoin(servers, eq(servers.id, repositories.serverId))
+    .where(eq(repositories.id, repoId));
+  if (!row) return null;
+  const report = (row.lastReport ?? {}) as { host?: { diskPct?: number | null } };
+  const diskPct = report.host?.diskPct;
+  if (!shouldSkipOvernightForDisk({ diskPct, reportAt: row.reportAt })) return null;
+  return `server disk at ${Math.round(diskPct ?? 0)}%`;
+}
 
 /** Repos whose latest successful scan still has a non-major fixable CVE. */
 export async function findReposNeedingSecurityFix(): Promise<
@@ -91,6 +125,11 @@ export async function runOvernightSecurityFixes(): Promise<void> {
     );
     for (const repo of candidates) {
       try {
+        const diskReason = await repoDiskSkipReason(repo.id);
+        if (diskReason) {
+          console.log(`[api] overnight security: skipped ${repo.name} (${diskReason})`);
+          continue;
+        }
         const runId = await runSecurityFixWhenIdle(repo.id, {
           scanId: repo.scanId,
           triggerSource: "auto",
