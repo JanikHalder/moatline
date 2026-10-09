@@ -15,9 +15,11 @@ FAIL2BAN_MAXRETRY=3
 EXTRA_PORTS=()
 TRUSTED_IPS=()
 SKIP_SWAP=false
+SKIP_DOCKER_LOGS=false
 # Empty = size from RAM (see recommended_swap_mb). Examples: 2G, 4096M.
 SWAP_SIZE=""
 SWAPFILE="/swapfile"
+DOCKER_DAEMON_JSON="/etc/docker/daemon.json"
 # Same files as the monitoring agent (pc-agent --trust-ip).
 TRUSTED_FAIL2BAN="/etc/fail2ban/jail.d/trusted-ips.local"
 TRUSTED_CROWDSEC="/etc/crowdsec/parsers/s02-enrich/trusted-ips.yaml"
@@ -26,20 +28,23 @@ usage() {
     cat << 'EOF'
 Usage: sudo ./harden-server.sh [OPTIONS]
 
-Secures the server: UFW firewall, SSH key-only auth (optional), fail2ban, swap.
-Safe for existing servers: UFW not installed → install and set desired ports; UFW
-installed with no rules → add desired ports; UFW already has rules → show only.
-Swap: none active → create /swapfile from RAM size; already active → show only.
-SSH: if key passed, add and disable password; if key present, disable password;
-if no key, leave password login enabled.
+Secures the server: UFW firewall, SSH key-only auth (optional), fail2ban, swap,
+Docker log limits. Safe for existing servers: UFW not installed → install and set
+desired ports; UFW installed with no rules → add desired ports; UFW already has
+rules → show only. Swap: none active → create /swapfile from RAM size; already
+active → show only. SSH: if key passed, add and disable password; if key present,
+disable password; if no key, leave password login enabled. Docker: truncate
+json-file logs in place (no restart), set log rotation in daemon.json (applies
+after the next Docker restart — this script does not restart Docker).
 
 OPTIONS:
   --key "ssh-rsa AAAA..."     Add this public key and disable password login
   --key-file /path/to/key.pub Use public key from file (disables password login)
   --user USER                 User for authorized_keys (default: $SUDO_USER or root)
   --ssh-port PORT             SSH port (default: 22). Allow this port in firewall.
-  --skip-ssh-key              Only set up firewall, fail2ban and swap; do not change SSH auth
+  --skip-ssh-key              Only set up firewall, fail2ban, swap and Docker logs; do not change SSH auth
   --skip-swap                 Do not create or change swap
+  --skip-docker-logs          Do not truncate container logs or change daemon.json
   --swap-size SIZE            Swap file size (default: from RAM). Examples: 2G, 4096M
   --allow-port PORT[,PORT...] Allow extra TCP port(s) in UFW (standard: 80, 443)
   --bantime TIME              fail2ban bantime (default: 1w). Examples: 1h, 1d, 1w
@@ -466,6 +471,109 @@ setup_swap() {
     echo "[*] Swap aktiv: ${size_mb} MiB ($SWAPFILE), swappiness=10."
 }
 
+# Unbounded json-file logs fill the root disk on busy Dokploy hosts. Truncate
+# frees space without stopping containers; daemon.json caps future growth
+# (new containers / after the next Docker restart).
+setup_docker_log_limits() {
+    if [[ "$SKIP_DOCKER_LOGS" == true ]]; then
+        echo "[*] Docker-Logs übersprungen (--skip-docker-logs)."
+        return 0
+    fi
+
+    local log_dir="/var/lib/docker/containers"
+    if [[ ! -d "$log_dir" ]]; then
+        echo "[*] Kein $log_dir — Docker nicht installiert oder noch ohne Container. Log-Rotation übersprungen."
+        return 0
+    fi
+
+    local before_kb after_kb
+    before_kb="$(du -sk "$log_dir" 2>/dev/null | awk '{print $1}')"
+    echo "[*] Docker-Container-Logs leeren (Container laufen weiter) ..."
+    # truncate is safe on open files; the daemon keeps writing to the same inode.
+    find "$log_dir" -type f -name '*-json.log' -exec truncate -s 0 {} + 2>/dev/null || true
+    after_kb="$(du -sk "$log_dir" 2>/dev/null | awk '{print $1}')"
+    if [[ -n "$before_kb" && -n "$after_kb" ]] && ((before_kb > after_kb)); then
+        echo "[*] Docker-Logs geleert: ca. $(((before_kb - after_kb) / 1024)) MiB freigegeben."
+    else
+        echo "[*] Docker-Logs geleert (oder waren schon klein)."
+    fi
+
+    mkdir -p "$(dirname "$DOCKER_DAEMON_JSON")"
+    local tmp merged
+    tmp="$(mktemp)"
+    if [[ -f "$DOCKER_DAEMON_JSON" ]]; then
+        if command -v python3 &>/dev/null; then
+            if python3 - "$DOCKER_DAEMON_JSON" "$tmp" <<'PY'
+import json, sys
+path, out = sys.argv[1], sys.argv[2]
+try:
+    with open(path, encoding="utf-8") as f:
+        raw = f.read().strip()
+    data = json.loads(raw) if raw else {}
+except Exception as e:
+    print(f"[!] {path} ist kein gültiges JSON ({e}) — unverändert.", file=sys.stderr)
+    sys.exit(2)
+if not isinstance(data, dict):
+    print(f"[!] {path} ist kein Objekt — unverändert.", file=sys.stderr)
+    sys.exit(2)
+driver = data.get("log-driver")
+if driver not in (None, "json-file"):
+    print(f"[*] log-driver ist {driver!r} — Log-Rotation nicht gesetzt (nur json-file).", file=sys.stderr)
+    sys.exit(3)
+data["log-driver"] = "json-file"
+opts = data.get("log-opts")
+if not isinstance(opts, dict):
+    opts = {}
+opts["max-size"] = "10m"
+opts["max-file"] = "3"
+data["log-opts"] = opts
+with open(out, "w", encoding="utf-8") as f:
+    json.dump(data, f, indent=2)
+    f.write("\n")
+PY
+            then
+                merged=true
+            else
+                local ec=$?
+                rm -f "$tmp"
+                if ((ec == 3)); then
+                    echo "[*] Bestehende Docker-Log-Konfiguration belassen."
+                    return 0
+                fi
+                echo "[!] daemon.json unverändert (Merge fehlgeschlagen)." >&2
+                return 0
+            fi
+        else
+            echo "[!] python3 fehlt — $DOCKER_DAEMON_JSON nicht angepasst. Logs wurden trotzdem geleert." >&2
+            rm -f "$tmp"
+            return 0
+        fi
+    else
+        cat > "$tmp" <<'EOF'
+{
+  "log-driver": "json-file",
+  "log-opts": {
+    "max-size": "10m",
+    "max-file": "3"
+  }
+}
+EOF
+        merged=true
+    fi
+
+    if [[ "${merged:-}" == true ]]; then
+        if [[ -f "$DOCKER_DAEMON_JSON" ]]; then
+            cp -a "$DOCKER_DAEMON_JSON" "${DOCKER_DAEMON_JSON}.bak.$(date +%Y%m%d%H%M%S)"
+        fi
+        mv "$tmp" "$DOCKER_DAEMON_JSON"
+        chmod 644 "$DOCKER_DAEMON_JSON"
+        echo "[*] $DOCKER_DAEMON_JSON: log-opts max-size=10m, max-file=3."
+        echo "[*] Rotation gilt nach dem nächsten Docker-Neustart (systemctl restart docker) — dieser Lauf startet Docker nicht neu."
+    else
+        rm -f "$tmp"
+    fi
+}
+
 main() {
     local args=()
     while [[ $# -gt 0 ]]; do
@@ -492,6 +600,10 @@ main() {
                 ;;
             --skip-swap)
                 SKIP_SWAP=true
+                shift
+                ;;
+            --skip-docker-logs)
+                SKIP_DOCKER_LOGS=true
                 shift
                 ;;
             --swap-size)
@@ -551,6 +663,7 @@ main() {
     trust_ips_in_crowdsec
     enable_automatic_security_updates
     setup_swap
+    setup_docker_log_limits
 
     echo ""
     echo "[*] Grundhärtung abgeschlossen. Prüfe Fail2ban-Status: fail2ban-client status sshd"

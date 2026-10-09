@@ -172,7 +172,9 @@ without a valid code or token.
 ## Setting up a server
 
 The server's **Setup** tab has all three steps as copy-and-paste commands:
-hardening (`harden-server.sh` — UFW, fail2ban, swap if none is set, optional
+hardening (`harden-server.sh` — UFW, fail2ban, swap if none is set, Docker
+json-file log rotation `10m`×3 plus truncate of existing `*-json.log` without
+restarting Docker, optional
 SSH key-only), automatic updates (`auto-update.sh`) and the monitoring agent.
 The two scripts come from the private save-server repository and are served by
 this app with their checksums; after changing them there, run
