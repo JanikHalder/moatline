@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 
 vi.mock("db", () => ({ db: {}, containerMetrics: {}, servers: {} }));
 
-import { aggregateApps, usageFindings } from "./workload-usage";
+import { aggregateApps, suggestedLimit, usageFindings } from "./workload-usage";
 
 const MB = 1024 * 1024;
 const GB = 1024 * MB;
@@ -89,5 +89,23 @@ describe("usageFindings", () => {
       fingerprint: "usage:cpu:shop",
       severity: "medium",
     });
+  });
+});
+
+describe("suggestedLimit", () => {
+  it("adds 50% headroom on the 95th percentile, rounded up to 256 MB", () => {
+    expect(suggestedLimit(400 * MB)).toBe(768 * MB); // 600 MB -> 768 MB
+    expect(suggestedLimit(10 * MB)).toBe(256 * MB); // never below 256 MB
+  });
+});
+
+describe("usageFindings suggested limit", () => {
+  it("names a limit for an app without one, when the p95 is known", () => {
+    const [f] = usageFindings([c("shop-1", { memBytes: 2 * GB })], {
+      baseline: { ...baseline(1.9 * GB), apps: { shop: { mem: 1.9 * GB, memP95: 2 * GB, cpu: 3, samples: 2000, since: "" } } },
+      hostMemBytes: 4 * GB,
+    });
+    expect(f!.fingerprint).toBe("usage:share:shop");
+    expect(f!.detail).toContain("Suggested limit: 3.0 GB");
   });
 });

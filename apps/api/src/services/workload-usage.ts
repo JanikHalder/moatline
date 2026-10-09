@@ -32,9 +32,25 @@ export type WorkloadBaseline = {
   computedAt: string;
   apps: Record<
     string,
-    { mem: number; cpu: number | null; samples: number; since: string }
+    {
+      mem: number;
+      /** 95th percentile of memory over the window; sizes a limit. */
+      memP95?: number;
+      cpu: number | null;
+      samples: number;
+      since: string;
+    }
   >;
 };
+
+/**
+ * Memory limit to suggest for an app that has none: the 95th percentile of
+ * its last week plus 50% headroom, rounded up to 256 MB.
+ */
+export function suggestedLimit(memP95: number): number {
+  const step = 256 * MIB;
+  return Math.max(step, Math.ceil((memP95 * 1.5) / step) * step);
+}
 
 /** Replicas of one app add up: the app is what leaks, not one task. */
 export function aggregateApps(containers: ContainerUsage[]): AppUsage[] {
@@ -149,7 +165,7 @@ export function usageFindings(
         fingerprint: `usage:share:${a.app}`,
         severity: share >= 0.6 ? "high" : "medium",
         title: `${a.app} takes ${Math.round(share * 100)}% of the server's memory, without a limit`,
-        detail: `${formatMem(a.memBytes)}${usual}. Without a limit one leaking app takes every other app on the server down with it. ${who}.\n${NODE_HINT}`,
+        detail: `${formatMem(a.memBytes)}${usual}. Without a limit one leaking app takes every other app on the server down with it.${known?.memP95 ? ` Suggested limit: ${formatMem(suggestedLimit(known.memP95))} (95th percentile of the last 7 days plus headroom).` : ""} ${who}.\n${NODE_HINT}`,
         target: a.image,
         repositoryId,
       });
@@ -208,6 +224,7 @@ export async function currentBaseline(
     .select({
       app: containerMetrics.app,
       mem: sql<number>`percentile_cont(0.5) within group (order by ${containerMetrics.memBytes})`,
+      memP95: sql<number>`percentile_cont(0.95) within group (order by ${containerMetrics.memBytes})`,
       cpu: sql<
         number | null
       >`percentile_cont(0.5) within group (order by ${containerMetrics.cpuPct})`,
@@ -233,6 +250,7 @@ export async function currentBaseline(
         r.app,
         {
           mem: Number(r.mem),
+          memP95: Number(r.memP95),
           cpu: r.cpu == null ? null : Number(r.cpu),
           samples: Number(r.samples),
           since: new Date(r.since).toISOString(),
