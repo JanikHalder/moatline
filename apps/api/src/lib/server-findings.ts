@@ -1,6 +1,7 @@
 import { and, eq, inArray, isNull, lt, sql } from "drizzle-orm";
 import { db, serverFindings, servers } from "db";
 import { notify } from "./notify";
+import { emitEvent, type MoatlineEvent } from "./events";
 
 export type FindingSource = (typeof serverFindings.$inferSelect)["source"];
 export type FindingSeverity = (typeof serverFindings.$inferSelect)["severity"];
@@ -230,23 +231,74 @@ const SOURCE_LABEL: Record<FindingSource, string> = {
  * message per sync, not one per finding, so a first Trivy run on an old
  * server does not send three hundred messages.
  */
+/** Per sync at most this many findings go to observability tools. */
+export const MAX_FINDING_EVENTS_PER_SYNC = 20;
+
+const EVENT_SEVERITY: Record<FindingSeverity, MoatlineEvent["severity"]> = {
+  critical: "error",
+  high: "error",
+  medium: "warn",
+  low: "info",
+  info: "info",
+};
+
+/** A newly opened server finding as an event for OTLP / webhook targets. */
+export function findingEvent(
+  server: { id: string; name: string },
+  source: FindingSource,
+  f: FindingInput,
+  at: Date = new Date()
+): MoatlineEvent {
+  return {
+    name: "server.finding.opened",
+    title: `${server.name}: ${f.title}`,
+    severity: EVENT_SEVERITY[f.severity],
+    at,
+    attributes: {
+      serverId: server.id,
+      serverName: server.name,
+      source,
+      fingerprint: f.fingerprint,
+      findingSeverity: f.severity,
+      target: f.target ?? null,
+      repositoryId: f.repositoryId ?? null,
+      detail: f.detail ? f.detail.slice(0, 500) : null,
+    },
+  };
+}
+
 export async function notifyOpened(
   serverId: string,
   source: FindingSource,
   result: SyncResult
 ): Promise<void> {
+  if (result.opened.length === 0) return;
+  const [server] = await db
+    .select({
+      name: servers.name,
+      organizationId: servers.organizationId,
+    })
+    .from(servers)
+    .where(eq(servers.id, serverId))
+    .limit(1);
+  if (!server) return;
+
+  // Every new finding goes to the org's observability tools (Dash0 etc.),
+  // so "why did the app crash" sits next to the deploys.
+  const now = new Date();
+  for (const f of result.opened.slice(0, MAX_FINDING_EVENTS_PER_SYNC)) {
+    emitEvent(
+      server.organizationId,
+      findingEvent({ id: serverId, name: server.name }, source, f, now)
+    );
+  }
+
   // Something the server's automation fixes on its own is not worth a
   // message — the alert comes if it does *not* get fixed (updates:stuck).
   const urgent = result.opened.filter(
     (f) => (f.severity === "critical" || f.severity === "high") && !f.autoFixAt
   );
   if (urgent.length === 0) return;
-  const [server] = await db
-    .select({ name: servers.name, organizationId: servers.organizationId })
-    .from(servers)
-    .where(eq(servers.id, serverId))
-    .limit(1);
-  if (!server) return;
   const lines = urgent
     .slice(0, 10)
     .map(
