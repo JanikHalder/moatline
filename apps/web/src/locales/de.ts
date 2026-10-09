@@ -574,8 +574,8 @@ export const de: Record<string, string> = {
     "Ein Befehl richtet alles ein. Funktioniert auf einem neuen Server und auf einem, auf dem schon eure Apps laufen.",
   "Only an owner or admin can generate install commands.":
     "Nur Owner oder Admins können Install-Befehle erzeugen.",
-  "Only firewall, fail2ban, swap and Docker logs — leave SSH authentication as it is":
-    "Nur Firewall, fail2ban, Swap und Docker-Logs — SSH-Anmeldung unverändert lassen",
+  "Only firewall, fail2ban, swap and log limits — leave SSH authentication as it is":
+    "Nur Firewall, fail2ban, Swap und Log-Limits — SSH-Anmeldung unverändert lassen",
   "Only for apps that build without a database — Payload and Next.js pages that render from their database fail here, because the check never gets credentials. Runs at low priority, one at a time.":
     "Nur für Apps, die ohne Datenbank bauen — Payload- und Next.js-Seiten, die aus ihrer Datenbank rendern, scheitern hier, weil der Check nie Zugangsdaten bekommt. Läuft mit niedriger Priorität, einer nach dem anderen.",
   "Only on a server meant for builds (e.g. your Dokploy build server). Installs a self-hosted runner that builds every pull request with an empty throwaway database — what Moatline cannot do for Payload/Next.js apps. Set the repository's check to “None” and add the workflow from its settings; auto-merge then waits for it.":
@@ -740,8 +740,8 @@ export const de: Record<string, string> = {
   "Trivy is not installed.": "Trivy ist nicht installiert.",
   Type: "Typ",
   "Typecheck (recommended)": "Typecheck (empfohlen)",
-  "UFW firewall (SSH, 80, 443 plus your ports), fail2ban, swap if none is set, SSH with keys only, Docker log rotate (10 MB × 3) and truncate oversized container logs without restarting Docker. On a server that already has firewall rules or swap, existing setup is only shown, never replaced.":
-    "UFW-Firewall (SSH, 80, 443 plus deine Ports), fail2ban, Swap falls noch keiner eingerichtet ist, SSH nur mit Keys, Docker-Log-Rotation (10 MB × 3) und Truncate großer Container-Logs ohne Docker-Neustart. Auf einem Server mit bestehender Firewall oder Swap wird das Bestehende nur angezeigt, nie ersetzt.",
+  "UFW firewall (SSH, 80, 443 plus your ports), fail2ban, swap if none is set, SSH with keys only, Docker log rotate (10 MB × 3), truncate oversized container logs without restarting Docker, and a 200 MB cap on the system journal. On a server that already has firewall rules or swap, existing setup is only shown, never replaced.":
+    "UFW-Firewall (SSH, 80, 443 plus deine Ports), fail2ban, Swap falls noch keiner eingerichtet ist, SSH nur mit Keys, Docker-Log-Rotation (10 MB × 3), Truncate großer Container-Logs ohne Docker-Neustart und 200 MB Limit fürs System-Journal. Auf einem Server mit bestehender Firewall oder Swap wird das Bestehende nur angezeigt, nie ersetzt.",
   "Unused packages": "Ungenutzte Pakete",
   Up: "Online",
   "Update packages": "Pakete aktualisieren",

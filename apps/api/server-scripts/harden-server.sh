@@ -16,6 +16,9 @@ EXTRA_PORTS=()
 TRUSTED_IPS=()
 SKIP_SWAP=false
 SKIP_DOCKER_LOGS=false
+SKIP_JOURNAL=false
+JOURNAL_MAX="200M"
+JOURNAL_DROPIN="/etc/systemd/journald.conf.d/99-moatline-size.conf"
 # Empty = size from RAM (see recommended_swap_mb). Examples: 2G, 4096M.
 SWAP_SIZE=""
 SWAPFILE="/swapfile"
@@ -33,7 +36,8 @@ Docker log limits. Safe for existing servers: UFW not installed → install and 
 desired ports; UFW installed with no rules → add desired ports; UFW already has
 rules → show only. Swap: none active → create /swapfile from RAM size; already
 active → show only. SSH: if key passed, add and disable password; if key present,
-disable password; if no key, leave password login enabled. Docker: truncate
+disable password; if no key, leave password login enabled. Journal: cap
+/var/log/journal at 200M unless SystemMaxUse is already set. Docker: truncate
 json-file logs in place (no restart), set log rotation in daemon.json (applies
 after the next Docker restart — this script does not restart Docker).
 
@@ -45,6 +49,7 @@ OPTIONS:
   --skip-ssh-key              Only set up firewall, fail2ban, swap and Docker logs; do not change SSH auth
   --skip-swap                 Do not create or change swap
   --skip-docker-logs          Do not truncate container logs or change daemon.json
+  --skip-journal              Do not cap the systemd journal (SystemMaxUse=200M)
   --swap-size SIZE            Swap file size (default: from RAM). Examples: 2G, 4096M
   --allow-port PORT[,PORT...] Allow extra TCP port(s) in UFW (standard: 80, 443)
   --bantime TIME              fail2ban bantime (default: 1w). Examples: 1h, 1d, 1w
@@ -574,6 +579,36 @@ EOF
     fi
 }
 
+# An unbounded journal can grow to several GB on a busy host. Cap it so it
+# never needs a manual vacuum.
+setup_journal_limit() {
+    if [[ "$SKIP_JOURNAL" == true ]]; then
+        echo "[*] Journal-Limit übersprungen (--skip-journal)."
+        return 0
+    fi
+    if ! command -v journalctl &>/dev/null || [[ ! -d /run/systemd/system ]]; then
+        echo "[*] Kein systemd-journald — Journal-Limit übersprungen."
+        return 0
+    fi
+    if [[ -f "$JOURNAL_DROPIN" ]]; then
+        echo "[*] Journal-Limit schon gesetzt ($JOURNAL_DROPIN)."
+        return 0
+    fi
+    # Respect a limit someone set on purpose (journald.conf or another drop-in).
+    if grep -qsE '^[[:space:]]*SystemMaxUse=' /etc/systemd/journald.conf /etc/systemd/journald.conf.d/*.conf; then
+        echo "[*] SystemMaxUse ist schon gesetzt — Journal-Limit belassen."
+        return 0
+    fi
+
+    mkdir -p "$(dirname "$JOURNAL_DROPIN")"
+    printf '[Journal]\nSystemMaxUse=%s\n' "$JOURNAL_MAX" > "$JOURNAL_DROPIN"
+    chmod 644 "$JOURNAL_DROPIN"
+    # Restarting journald is quick and does not touch other services.
+    systemctl restart systemd-journald 2>/dev/null || true
+    journalctl --vacuum-size="$JOURNAL_MAX" >/dev/null 2>&1 || true
+    echo "[*] Journal auf $JOURNAL_MAX begrenzt ($JOURNAL_DROPIN), alte Einträge entfernt."
+}
+
 main() {
     local args=()
     while [[ $# -gt 0 ]]; do
@@ -604,6 +639,10 @@ main() {
                 ;;
             --skip-docker-logs)
                 SKIP_DOCKER_LOGS=true
+                shift
+                ;;
+            --skip-journal)
+                SKIP_JOURNAL=true
                 shift
                 ;;
             --swap-size)
@@ -664,6 +703,7 @@ main() {
     enable_automatic_security_updates
     setup_swap
     setup_docker_log_limits
+    setup_journal_limit
 
     echo ""
     echo "[*] Grundhärtung abgeschlossen. Prüfe Fail2ban-Status: fail2ban-client status sshd"

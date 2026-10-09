@@ -79,7 +79,7 @@ export function HardenStep({ install }: { install: AgentInstall }) {
         <CardTitle>{tx("1. Harden the server")}</CardTitle>
         <CardDescription>
           {tx(
-            "UFW firewall (SSH, 80, 443 plus your ports), fail2ban, swap if none is set, SSH with keys only, Docker log rotate (10 MB × 3) and truncate oversized container logs without restarting Docker. On a server that already has firewall rules or swap, existing setup is only shown, never replaced."
+            "UFW firewall (SSH, 80, 443 plus your ports), fail2ban, swap if none is set, SSH with keys only, Docker log rotate (10 MB × 3), truncate oversized container logs without restarting Docker, and a 200 MB cap on the system journal. On a server that already has firewall rules or swap, existing setup is only shown, never replaced."
           )}
         </CardDescription>
       </CardHeader>
@@ -98,7 +98,7 @@ export function HardenStep({ install }: { install: AgentInstall }) {
             onCheckedChange={(v) => setKeepSsh(v === true)}
           />
           {tx(
-            "Only firewall, fail2ban, swap and Docker logs — leave SSH authentication as it is"
+            "Only firewall, fail2ban, swap and log limits — leave SSH authentication as it is"
           )}
         </label>
         {!keepSsh && (

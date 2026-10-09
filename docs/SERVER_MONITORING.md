@@ -174,7 +174,7 @@ without a valid code or token.
 The server's **Setup** tab has all three steps as copy-and-paste commands:
 hardening (`harden-server.sh` — UFW, fail2ban, swap if none is set, Docker
 json-file log rotation `10m`×3 plus truncate of existing `*-json.log` without
-restarting Docker, optional
+restarting Docker, `SystemMaxUse=200M` for the systemd journal, optional
 SSH key-only), automatic updates (`auto-update.sh`) and the monitoring agent.
 The two scripts come from the private save-server repository and are served by
 this app with their checksums; after changing them there, run
