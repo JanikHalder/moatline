@@ -12,6 +12,7 @@ import {
   crowdsecFindings,
   hostFindings,
   hostPercentages,
+  dockerHiddenBytes,
   isFresh,
   repoForImage,
   trivyFindings,
@@ -43,6 +44,40 @@ function report(overrides: Partial<AgentReport> = {}): AgentReport {
 describe("hostFindings", () => {
   it("reports nothing for a healthy host", () => {
     expect(hostFindings(report(), thresholds)).toEqual([]);
+  });
+
+  it("reports layers on disk that docker system df does not list", () => {
+    const hidden = report({
+      dockerDisk: {
+        images: { sizeBytes: 20e9, reclaimableBytes: 0 },
+        buildCache: { sizeBytes: 5e9, reclaimableBytes: 0 },
+        containers: { sizeBytes: 1e9, reclaimableBytes: 0 },
+        overlay2Bytes: 85e9,
+      },
+    } as Partial<AgentReport>);
+    expect(dockerHiddenBytes(hidden)).toBe(59e9);
+    expect(
+      hostFindings(hidden, thresholds).find(
+        (x) => x.fingerprint === "docker:hidden-layers"
+      )
+    ).toMatchObject({
+      severity: "high",
+      title: "Docker keeps 59 GB of layers that its own report does not show",
+    });
+  });
+
+  it("stays quiet when the listed sizes account for the disk, or overlay2 was not measured", () => {
+    const even = report({
+      dockerDisk: {
+        images: { sizeBytes: 20e9, reclaimableBytes: 0 },
+        overlay2Bytes: 21e9,
+      },
+    } as Partial<AgentReport>);
+    expect(dockerHiddenBytes(even)).toBe(1e9);
+    expect(
+      hostFindings(even, thresholds).map((x) => x.fingerprint)
+    ).not.toContain("docker:hidden-layers");
+    expect(dockerHiddenBytes(report())).toBeNull();
   });
 
   it("points at Docker leftovers that fill the disk", () => {
