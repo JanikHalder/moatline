@@ -102,7 +102,18 @@ describe("suggestedLimit", () => {
 describe("usageFindings suggested limit", () => {
   it("names a limit for an app without one, when the p95 is known", () => {
     const [f] = usageFindings([c("shop-1", { memBytes: 2 * GB })], {
-      baseline: { ...baseline(1.9 * GB), apps: { shop: { mem: 1.9 * GB, memP95: 2 * GB, cpu: 3, samples: 2000, since: "" } } },
+      baseline: {
+        ...baseline(1.9 * GB),
+        apps: {
+          shop: {
+            mem: 1.9 * GB,
+            memP95: 2 * GB,
+            cpu: 3,
+            samples: 2000,
+            since: "",
+          },
+        },
+      },
       hostMemBytes: 4 * GB,
     });
     expect(f!.fingerprint).toBe("usage:share:shop");
