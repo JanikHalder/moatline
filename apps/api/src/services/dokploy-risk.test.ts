@@ -121,6 +121,29 @@ describe("databaseFindings", () => {
     ]);
   });
 
+  it("flags a backup that is on but has never run", () => {
+    const f = databaseFindings(
+      mongo,
+      {
+        externalPort: null,
+        backups: [
+          {
+            backupId: "b5",
+            enabled: true,
+            lastRun: null,
+            schedule: "0 3 * * *",
+            database: "app",
+            destination: "S3",
+          },
+        ],
+      },
+      now
+    );
+    expect(f.map((x) => [x.fingerprint, x.severity])).toEqual([
+      ["db-backup-never-ran|b5", "high"],
+    ]);
+  });
+
   it("does not ask Redis for backups Dokploy cannot make", () => {
     const redis = svc({ applicationId: "r1", kind: "redis", name: "Cache" });
     expect(
