@@ -26,13 +26,13 @@ describe("normalizeSeverity", () => {
 describe("findingEvent", () => {
   it("maps a new finding to a server.finding.opened event", () => {
     const e = findingEvent(
-      { id: "srv-1", name: "md-application-server-1" },
+      { id: "srv-1", name: "example-server-1" },
       "host",
       { fingerprint: "usage:oom:shop", severity: "high", title: "shop was killed for running out of memory", target: "ghcr.io/x/shop:1" }
     );
     expect(e).toMatchObject({
       name: "server.finding.opened",
-      title: "md-application-server-1: shop was killed for running out of memory",
+      title: "example-server-1: shop was killed for running out of memory",
       severity: "error",
       attributes: { serverId: "srv-1", source: "host", fingerprint: "usage:oom:shop", findingSeverity: "high", target: "ghcr.io/x/shop:1" },
     });
