@@ -145,7 +145,16 @@ export function databaseFindings(
         detail: `The last backup run of the ${label}${run.at ? ` (${run.at})` : ""} failed. Its log is in Dokploy under database → Backups.`,
         target: s.appName,
       });
-    } else if (run?.at && now - Date.parse(run.at) > lateAfter(b.schedule)) {
+    } else if (!run) {
+      // Switched on, but Dokploy has never run it: nothing exists to restore from.
+      out.push({
+        fingerprint: `db-backup-never-ran|${b.backupId}`,
+        severity: "high",
+        title: `${what} has never run`,
+        detail: `The backup of the ${label}${b.destination ? ` to ${b.destination}` : ""} is switched on, but there is no run yet. Trigger it once under database → Backups and check the file is in the destination.`,
+        target: s.appName,
+      });
+    } else if (run.at && now - Date.parse(run.at) > lateAfter(b.schedule)) {
       out.push({
         fingerprint: `db-backup-late|${b.backupId}`,
         severity: "medium",
