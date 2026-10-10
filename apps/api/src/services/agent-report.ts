@@ -1272,10 +1272,9 @@ export async function ingestReport(
 
   // Disk at/over threshold + reclaimable Docker junk → clear via Dokploy
   // (build cache + unused images only). Cooldown inside maybeAutoCleanDocker.
-  void maybeAutoCleanDocker(
-    { ...server, lastReport },
-    lastReport
-  ).catch((e) => console.error("[servers] docker auto-clean failed:", e));
+  void maybeAutoCleanDocker({ ...server, lastReport }, lastReport).catch((e) =>
+    console.error("[servers] docker auto-clean failed:", e)
+  );
 }
 
 /**
