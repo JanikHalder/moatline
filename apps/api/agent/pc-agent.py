@@ -55,7 +55,7 @@ import urllib.request
 from collections import Counter
 from datetime import datetime, timezone
 
-VERSION = "1.17.0"
+VERSION = "1.18.0"
 CONFIG_PATH = "/etc/pc-agent/config.json"
 INSTALL_DIR = "/usr/local/lib/pc-agent"
 CACHE_DIR = "/var/cache/pc-agent"
@@ -1241,6 +1241,11 @@ def collect_docker_disk():
         key = keys.get(row.get("Type"))
         if key:
             result[key] = {"sizeBytes": _df_bytes(row.get("Size")), "reclaimableBytes": _df_bytes(row.get("Reclaimable"))}
+    # Layers on disk, including orphans that `docker system df` does not list.
+    # The server compares this with the sum above to find the hidden part.
+    overlay_total, _, _ = measure_dir("/var/lib/docker/overlay2", timeout=180)
+    if overlay_total is not None:
+        result["overlay2Bytes"] = overlay_total
     result["measuredAt"] = datetime.now(timezone.utc).isoformat()
     try:
         os.makedirs(CACHE_DIR, mode=0o700, exist_ok=True)
