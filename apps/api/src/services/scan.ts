@@ -58,6 +58,50 @@ function tokenHint(h: RepoHandle): string {
     : `Settings → Git hosts → ${h.label}`;
 }
 
+/**
+ * A host answers 404 for a missing repo, branch and file alike (and for a
+ * private repo the token cannot see). Ask once more to tell them apart, so
+ * the message names the thing to fix instead of listing all three.
+ */
+export async function explainNotFound(
+  h: RepoHandle,
+  branch: string,
+  filePath: string
+): Promise<string> {
+  const where = `${h.owner}/${h.repo}`;
+  const tokenAdvice = h.token
+    ? `Check that the ${h.label} token can read it (${tokenHint(h)}).`
+    : `Private repos need a ${h.label} token (${tokenHint(h)}).`;
+
+  if (await h.api.branchHead(branch).catch(() => null)) {
+    // Repo and branch exist, so the file is what is missing.
+    if (filePath === "package.json") {
+      return `${h.label} 404 – no package.json in the root of "${where}" on branch "${branch}". For a monorepo, set the root directory in the repository settings.`;
+    }
+    const atRoot = await h.api
+      .readFile("package.json", branch)
+      .catch(() => null);
+    return `${h.label} 404 – "${filePath}" does not exist in "${where}" on branch "${branch}".${
+      atRoot?.ok
+        ? " There is a package.json in the repo root – clear the root directory if that is the project."
+        : " Check the root directory in the repository settings."
+    }`;
+  }
+
+  const branches = await h.api.listBranches().catch(() => null);
+  if (!branches?.length) {
+    return `${h.label} 404 – "${where}" is not reachable (not found, or the token has no access). ${tokenAdvice}`;
+  }
+  const names = branches.map((b) => b.name);
+  const likely = ["main", "master", "develop", "dev"].filter((n) =>
+    names.includes(n)
+  );
+  const suggest = (likely.length ? likely : names).slice(0, 5);
+  return `${h.label} 404 – branch "${branch}" does not exist in "${where}". Branches found: ${suggest.map((n) => `"${n}"`).join(", ")}${
+    names.length > suggest.length ? ", …" : ""
+  }. Set the right branch in the repository settings.`;
+}
+
 async function fetchPackageJson(
   h: RepoHandle,
   branch: string,
@@ -67,12 +111,7 @@ async function fetchPackageJson(
   const res = await h.api.readFile(path, branch);
   if (!res.ok) {
     if (res.status === 404) {
-      return {
-        ok: false,
-        error: h.token
-          ? `${h.label} 404 – branch "${branch}" or path "${path}" not found. Check branch and root directory.`
-          : `Public repo 404 – branch "${branch}" or path "${path}" not found. Private repos need a ${h.label} token (${tokenHint(h)}).`,
-      };
+      return { ok: false, error: await explainNotFound(h, branch, path) };
     }
     if (res.status === 401) {
       return {
