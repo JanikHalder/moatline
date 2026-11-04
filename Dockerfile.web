@@ -1,7 +1,7 @@
 # The bundle is the same for every architecture: build it natively and only
 # copy it into each platform's nginx. Installing under QEMU (arm64 on an
 # amd64 runner) is slow and has hung release builds.
-FROM --platform=$BUILDPLATFORM node:20-alpine AS base
+FROM --platform=$BUILDPLATFORM node:22.23.4-alpine AS base
 RUN corepack enable && corepack prepare pnpm@10.8.1 --activate
 WORKDIR /app
 

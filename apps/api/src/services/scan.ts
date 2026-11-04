@@ -58,6 +58,50 @@ function tokenHint(h: RepoHandle): string {
     : `Settings → Git hosts → ${h.label}`;
 }
 
+/**
+ * A host answers 404 for a missing repo, branch and file alike (and for a
+ * private repo the token cannot see). Ask once more to tell them apart, so
+ * the message names the thing to fix instead of listing all three.
+ */
+export async function explainNotFound(
+  h: RepoHandle,
+  branch: string,
+  filePath: string
+): Promise<string> {
+  const where = `${h.owner}/${h.repo}`;
+  const tokenAdvice = h.token
+    ? `Check that the ${h.label} token can read it (${tokenHint(h)}).`
+    : `Private repos need a ${h.label} token (${tokenHint(h)}).`;
+
+  if (await h.api.branchHead(branch).catch(() => null)) {
+    // Repo and branch exist, so the file is what is missing.
+    if (filePath === "package.json") {
+      return `${h.label} 404 – no package.json in the root of "${where}" on branch "${branch}". For a monorepo, set the root directory in the repository settings.`;
+    }
+    const atRoot = await h.api
+      .readFile("package.json", branch)
+      .catch(() => null);
+    return `${h.label} 404 – "${filePath}" does not exist in "${where}" on branch "${branch}".${
+      atRoot?.ok
+        ? " There is a package.json in the repo root – clear the root directory if that is the project."
+        : " Check the root directory in the repository settings."
+    }`;
+  }
+
+  const branches = await h.api.listBranches().catch(() => null);
+  if (!branches?.length) {
+    return `${h.label} 404 – "${where}" is not reachable (not found, or the token has no access). ${tokenAdvice}`;
+  }
+  const names = branches.map((b) => b.name);
+  const likely = ["main", "master", "develop", "dev"].filter((n) =>
+    names.includes(n)
+  );
+  const suggest = (likely.length ? likely : names).slice(0, 5);
+  return `${h.label} 404 – branch "${branch}" does not exist in "${where}". Branches found: ${suggest.map((n) => `"${n}"`).join(", ")}${
+    names.length > suggest.length ? ", …" : ""
+  }. Set the right branch in the repository settings.`;
+}
+
 async function fetchPackageJson(
   h: RepoHandle,
   branch: string,
@@ -67,12 +111,7 @@ async function fetchPackageJson(
   const res = await h.api.readFile(path, branch);
   if (!res.ok) {
     if (res.status === 404) {
-      return {
-        ok: false,
-        error: h.token
-          ? `${h.label} 404 – branch "${branch}" or path "${path}" not found. Check branch and root directory.`
-          : `Public repo 404 – branch "${branch}" or path "${path}" not found. Private repos need a ${h.label} token (${tokenHint(h)}).`,
-      };
+      return { ok: false, error: await explainNotFound(h, branch, path) };
     }
     if (res.status === 401) {
       return {
@@ -337,21 +376,31 @@ async function readDeployCheck(
   return buildDeployCheck(pkg, nextConfig, dockerfile);
 }
 
-async function getLatestVersion(packageName: string): Promise<string | null> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), NPM_FETCH_TIMEOUT_MS);
+/**
+ * `scanSignal` ends the request when the scan gives up on this phase. Without
+ * it a stalled registry answer would hold a slot in `limit` forever, and
+ * every later scan would queue behind it.
+ */
+async function getLatestVersion(
+  packageName: string,
+  scanSignal?: AbortSignal
+): Promise<string | null> {
+  // The deadline covers the body read too: aborting the fetch also aborts
+  // res.json(), which a stalled body would otherwise hang on.
+  const signal = AbortSignal.any([
+    AbortSignal.timeout(NPM_FETCH_TIMEOUT_MS),
+    ...(scanSignal ? [scanSignal] : []),
+  ]);
   try {
     const res = await fetch(
       `${NPM_REGISTRY}/${encodeURIComponent(packageName)}`,
-      { signal: controller.signal }
+      { signal }
     );
-    clearTimeout(timeoutId);
     if (!res.ok) return null;
     const data = await res.json();
     const latest = data["dist-tags"]?.latest ?? data.version ?? null;
     return latest;
   } catch {
-    clearTimeout(timeoutId);
     return null;
   }
 }
@@ -683,11 +732,16 @@ export async function runScan(
         .set({ currentStep: `fetch_versions:0:${total}` })
         .where(eq(scans.id, scanId));
     }
+    // When the phase gives up, this aborts every lookup still in flight, so
+    // the shared `limit` slots come back instead of staying blocked.
+    const phase = new AbortController();
     const fetchVersionsPromise = Promise.all(
       depEntries.map(([name, range]) =>
         limit(async () => {
-          const latest = await getLatestVersion(name);
+          if (phase.signal.aborted) return;
+          const latest = await getLatestVersion(name, phase.signal);
           const n = ++done;
+          if (phase.signal.aborted) return;
           await updateProgress(n);
           if (latest) {
             await db.insert(packageFindings).values({
@@ -703,13 +757,18 @@ export async function runScan(
         })
       )
     );
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(
-        () => reject(new Error("Fetching latest versions timed out (5 min)")),
-        FETCH_VERSIONS_PHASE_TIMEOUT_MS
-      )
-    );
-    await Promise.race([fetchVersionsPromise, timeoutPromise]);
+    let phaseTimer: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      phaseTimer = setTimeout(() => {
+        phase.abort();
+        reject(new Error("Fetching latest versions timed out (5 min)"));
+      }, FETCH_VERSIONS_PHASE_TIMEOUT_MS);
+    });
+    try {
+      await Promise.race([fetchVersionsPromise, timeoutPromise]);
+    } finally {
+      clearTimeout(phaseTimer);
+    }
     await db
       .update(scans)
       .set({ status: "success", currentStep: null, finishedAt: new Date() })

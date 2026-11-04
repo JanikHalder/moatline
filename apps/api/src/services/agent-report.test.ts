@@ -12,6 +12,7 @@ import {
   crowdsecFindings,
   hostFindings,
   hostPercentages,
+  dockerHiddenBytes,
   isFresh,
   repoForImage,
   trivyFindings,
@@ -19,6 +20,7 @@ import {
   type AgentReport,
   tailscaleFindings,
   osFindings,
+  layerCleanupFindings,
 } from "./agent-report";
 
 const thresholds = { cpuThreshold: 90, memoryThreshold: 90, diskThreshold: 85 };
@@ -43,6 +45,40 @@ function report(overrides: Partial<AgentReport> = {}): AgentReport {
 describe("hostFindings", () => {
   it("reports nothing for a healthy host", () => {
     expect(hostFindings(report(), thresholds)).toEqual([]);
+  });
+
+  it("reports layers on disk that docker system df does not list", () => {
+    const hidden = report({
+      dockerDisk: {
+        images: { sizeBytes: 20e9, reclaimableBytes: 0 },
+        buildCache: { sizeBytes: 5e9, reclaimableBytes: 0 },
+        containers: { sizeBytes: 1e9, reclaimableBytes: 0 },
+        overlay2Bytes: 85e9,
+      },
+    } as Partial<AgentReport>);
+    expect(dockerHiddenBytes(hidden)).toBe(59e9);
+    expect(
+      hostFindings(hidden, thresholds).find(
+        (x) => x.fingerprint === "docker:hidden-layers"
+      )
+    ).toMatchObject({
+      severity: "high",
+      title: "Docker keeps 59 GB of layers that its own report does not show",
+    });
+  });
+
+  it("stays quiet when the listed sizes account for the disk, or overlay2 was not measured", () => {
+    const even = report({
+      dockerDisk: {
+        images: { sizeBytes: 20e9, reclaimableBytes: 0 },
+        overlay2Bytes: 21e9,
+      },
+    } as Partial<AgentReport>);
+    expect(dockerHiddenBytes(even)).toBe(1e9);
+    expect(
+      hostFindings(even, thresholds).map((x) => x.fingerprint)
+    ).not.toContain("docker:hidden-layers");
+    expect(dockerHiddenBytes(report())).toBeNull();
   });
 
   it("points at Docker leftovers that fill the disk", () => {
@@ -620,5 +656,80 @@ describe("osFindings", () => {
   it("leaves supported systems alone", () => {
     expect(osFindings(on("Ubuntu 24.04.1 LTS"), now)).toEqual([]);
     expect(osFindings(on("Rocky Linux 9"), now)).toEqual([]);
+  });
+});
+
+describe("layerCleanupFindings", () => {
+  const at = "2026-11-05T03:05:00Z";
+  const now = Date.parse(at) + 60 * 60 * 1000;
+  const cleanup = (layerCleanup: object) =>
+    report({ layerCleanup } as Partial<AgentReport>);
+
+  it("names the services after a rollback and how to switch it back on", () => {
+    const [f] = layerCleanupFindings(
+      cleanup({
+        phase: "rolled_back",
+        at,
+        reason: "Nach 15 min liefen nicht: shop",
+        down: ["shop"],
+        disabled: true,
+      }),
+      now
+    );
+    expect(f).toMatchObject({
+      fingerprint: "docker:layer-cleanup-rolled-back",
+      severity: "high",
+    });
+    expect(f.detail).toContain("shop did not come up");
+    expect(f.detail).toContain("docker-layer-cleanup enable");
+  });
+
+  it("passes on the reason of a skipped run", () => {
+    const [f] = layerCleanupFindings(
+      cleanup({ phase: "skipped", at, reason: "Image abc nicht lesbar" }),
+      now
+    );
+    expect(f).toMatchObject({
+      fingerprint: "docker:layer-cleanup-skipped",
+      severity: "medium",
+    });
+    expect(f.detail).toContain("Image abc nicht lesbar");
+  });
+
+  it("flags a move that was never confirmed, but not one still being checked", () => {
+    const moved = cleanup({ phase: "moved", at, layers: 451, gb: 82.8 });
+    expect(layerCleanupFindings(moved, now)[0]?.fingerprint).toBe(
+      "docker:layer-cleanup-unverified"
+    );
+    expect(layerCleanupFindings(moved, Date.parse(at) + 5 * 60 * 1000)).toEqual(
+      []
+    );
+  });
+
+  it("stays quiet after a good run, and when the tool is not installed", () => {
+    expect(
+      layerCleanupFindings(
+        cleanup({ phase: "ok", at, layers: 451, gb: 82.8 }),
+        now
+      )
+    ).toEqual([]);
+    expect(
+      layerCleanupFindings(cleanup({ phase: "enabled", at }), now)
+    ).toEqual([]);
+    expect(layerCleanupFindings(report(), now)).toEqual([]);
+  });
+
+  it("accepts what the agent sends", () => {
+    expect(() =>
+      cleanup({
+        phase: null,
+        at: null,
+        reason: null,
+        layers: null,
+        gb: null,
+        down: [],
+        disabled: false,
+      })
+    ).not.toThrow();
   });
 });

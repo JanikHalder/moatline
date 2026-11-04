@@ -19,7 +19,7 @@
 
 [phases.setup]
 # nuclei: scans the live URLs of the applications on monitored servers.
-nixPkgs = ["nodejs_20", "pnpm", "git", "openssh", "nuclei"]
+nixPkgs = ["nodejs_22", "pnpm", "git", "openssh", "nuclei"]
 
 [phases.install]
 cmds = ["pnpm install --frozen-lockfile"]
