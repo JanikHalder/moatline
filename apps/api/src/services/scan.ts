@@ -376,21 +376,31 @@ async function readDeployCheck(
   return buildDeployCheck(pkg, nextConfig, dockerfile);
 }
 
-async function getLatestVersion(packageName: string): Promise<string | null> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), NPM_FETCH_TIMEOUT_MS);
+/**
+ * `scanSignal` ends the request when the scan gives up on this phase. Without
+ * it a stalled registry answer would hold a slot in `limit` forever, and
+ * every later scan would queue behind it.
+ */
+async function getLatestVersion(
+  packageName: string,
+  scanSignal?: AbortSignal
+): Promise<string | null> {
+  // The deadline covers the body read too: aborting the fetch also aborts
+  // res.json(), which a stalled body would otherwise hang on.
+  const signal = AbortSignal.any([
+    AbortSignal.timeout(NPM_FETCH_TIMEOUT_MS),
+    ...(scanSignal ? [scanSignal] : []),
+  ]);
   try {
     const res = await fetch(
       `${NPM_REGISTRY}/${encodeURIComponent(packageName)}`,
-      { signal: controller.signal }
+      { signal }
     );
-    clearTimeout(timeoutId);
     if (!res.ok) return null;
     const data = await res.json();
     const latest = data["dist-tags"]?.latest ?? data.version ?? null;
     return latest;
   } catch {
-    clearTimeout(timeoutId);
     return null;
   }
 }
@@ -722,11 +732,16 @@ export async function runScan(
         .set({ currentStep: `fetch_versions:0:${total}` })
         .where(eq(scans.id, scanId));
     }
+    // When the phase gives up, this aborts every lookup still in flight, so
+    // the shared `limit` slots come back instead of staying blocked.
+    const phase = new AbortController();
     const fetchVersionsPromise = Promise.all(
       depEntries.map(([name, range]) =>
         limit(async () => {
-          const latest = await getLatestVersion(name);
+          if (phase.signal.aborted) return;
+          const latest = await getLatestVersion(name, phase.signal);
           const n = ++done;
+          if (phase.signal.aborted) return;
           await updateProgress(n);
           if (latest) {
             await db.insert(packageFindings).values({
@@ -742,13 +757,18 @@ export async function runScan(
         })
       )
     );
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(
-        () => reject(new Error("Fetching latest versions timed out (5 min)")),
-        FETCH_VERSIONS_PHASE_TIMEOUT_MS
-      )
-    );
-    await Promise.race([fetchVersionsPromise, timeoutPromise]);
+    let phaseTimer: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      phaseTimer = setTimeout(() => {
+        phase.abort();
+        reject(new Error("Fetching latest versions timed out (5 min)"));
+      }, FETCH_VERSIONS_PHASE_TIMEOUT_MS);
+    });
+    try {
+      await Promise.race([fetchVersionsPromise, timeoutPromise]);
+    } finally {
+      clearTimeout(phaseTimer);
+    }
     await db
       .update(scans)
       .set({ status: "success", currentStep: null, finishedAt: new Date() })
