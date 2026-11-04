@@ -247,7 +247,9 @@ EOF
 # docker-layer-verify bis zu 15 min, bis alle Swarm-Services wieder laufen.
 # Klappt das nicht, stoppt es Docker, holt die Layer zurück, startet Docker neu
 # und schaltet das Aussortieren ab, bis jemand nachgesehen hat – nachts um
-# 04:00 muss also niemand reagieren.
+# 04:00 muss also niemand reagieren. Das Ergebnis steht in
+# /var/lib/docker-layer-cleanup/status.json; der Moatline-Agent meldet es, und
+# die App zeigt eine Rücknahme oder einen übersprungenen Lauf mit Grund an.
 # Den BuildKit-Cache schiebt es mit in den Papierkorb, weil er auf Layer
 # zeigen kann, die zu keinem Image gehören; der nächste Build ist dann
 # ungecacht.
@@ -259,6 +261,7 @@ cat > /usr/local/sbin/docker-layer-cleanup <<'EOF'
   docker-layer-cleanup restore  Docker GESTOPPT. Holt den jüngsten Papierkorb zurück.
   docker-layer-cleanup purge    Löscht Papierkörbe, die älter als zwei Tage sind.
   docker-layer-cleanup verify   Nach dem Boot: laufen nicht alle Services, Layer automatisch zurückholen.
+  docker-layer-cleanup enable   Nach einer Rücknahme wieder einschalten (ab dem nächsten Boot).
 """
 import hashlib, json, os, re, shutil, subprocess, sys, time
 
@@ -268,6 +271,9 @@ VERIFY_S = 15 * 60
 MOVED = "/run/docker-layer-cleanup.moved"
 STATE = "/var/lib/docker-layer-cleanup"
 DISABLED = f"{STATE}/disabled"
+# Ergebnis des letzten Laufs, für den Moatline-Agent.
+STATUS = f"{STATE}/status.json"
+DRY = False
 DOWN_BEFORE = "/var/lib/docker-reboot-guard/down-before"
 
 
@@ -298,8 +304,21 @@ def docker_running():
     return False
 
 
-def skip(msg):
+def status(phase, **fields):
+    if DRY:
+        return
+    fields.update(phase=phase, at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
+    os.makedirs(STATE, exist_ok=True)
+    with open(STATUS + ".tmp", "w") as f:
+        json.dump(fields, f)
+    os.replace(STATUS + ".tmp", STATUS)
+
+
+def skip(msg, unsafe=False):
+    """unsafe: etwas stimmt nicht und gehört angesehen, statt nur nicht zuzutreffen."""
     print("Nichts verschoben:", msg)
+    if unsafe:
+        status("skipped", reason=msg)
     sys.exit(0)
 
 
@@ -324,12 +343,12 @@ def orphans():
     imagedb = f"{D}/image/overlay2/imagedb/content/sha256"
     images = os.listdir(imagedb) if os.path.isdir(imagedb) else []
     if not images:
-        skip("keine Images gefunden, die Prüfung wäre nicht verlässlich.")
+        skip("keine Images gefunden, die Prüfung wäre nicht verlässlich.", unsafe=True)
     for f in images:
         try:
             diff_ids = json.load(open(f"{imagedb}/{f}"))["rootfs"]["diff_ids"]
         except (OSError, ValueError, KeyError, TypeError) as e:
-            skip(f"Image {f[:12]} nicht lesbar ({e}).")
+            skip(f"Image {f[:12]} nicht lesbar ({e}).", unsafe=True)
         chain = None
         for diff in diff_ids:
             chain = diff if chain is None else "sha256:" + hashlib.sha256(f"{chain} {diff}".encode()).hexdigest()
@@ -367,17 +386,17 @@ def orphans():
         if h in orph:
             continue
         if parent_of(h) in orph:
-            skip(f"Layer {h[:12]} hat einen verwaisten Layer als Eltern.")
+            skip(f"Layer {h[:12]} hat einen verwaisten Layer als Eltern.", unsafe=True)
         try:
             if read(f"{BASE}/{h}/cache-id") in cids:
-                skip(f"Layer {h[:12]} teilt ein Verzeichnis mit einem verwaisten Layer.")
+                skip(f"Layer {h[:12]} teilt ein Verzeichnis mit einem verwaisten Layer.", unsafe=True)
         except OSError:
             pass
     for m in os.listdir(mounts) if os.path.isdir(mounts) else []:
         for name in ("mount-id", "init-id"):
             try:
                 if read(f"{mounts}/{m}/{name}") in cids:
-                    skip(f"Container {m[:12]} nutzt ein verwaistes Verzeichnis.")
+                    skip(f"Container {m[:12]} nutzt ein verwaistes Verzeichnis.", unsafe=True)
             except OSError:
                 pass
     return rows
@@ -394,15 +413,19 @@ def size_gb(rows):
 
 
 def move(dry):
+    global DRY
+    DRY = dry
     if docker_running():
         skip("Docker läuft. Erst: systemctl stop docker.socket docker")
     if os.path.exists(DISABLED) and not dry:
-        skip(f"abgeschaltet ({read(DISABLED)}). Nach dem Nachsehen: rm {DISABLED}")
+        skip(f"abgeschaltet ({read(DISABLED)}). Nach dem Nachsehen: docker-layer-cleanup enable")
     rows = orphans()
     if not rows:
         print("Keine verwaisten Layer.")
+        status("nothing")
         return
-    print(f"{len(rows)} verwaiste Layer, ca. {size_gb(rows):.1f} GB.")
+    gb = round(size_gb(rows), 1)
+    print(f"{len(rows)} verwaiste Layer, ca. {gb} GB.")
     if dry:
         print("Probelauf, nichts geändert.")
         return
@@ -411,7 +434,7 @@ def move(dry):
     os.makedirs(f"{dest}/overlay2", exist_ok=True)
     if os.stat(dest).st_dev != os.stat(D).st_dev:
         shutil.rmtree(dest)
-        skip(f"{TRASH} liegt nicht auf derselben Platte wie {D}.")
+        skip(f"{TRASH} liegt nicht auf derselben Platte wie {D}.", unsafe=True)
     if os.path.isdir(f"{D}/buildkit"):
         os.rename(f"{D}/buildkit", f"{dest}/buildkit")
     for h, cid in rows:
@@ -426,6 +449,7 @@ def move(dry):
             os.rename(f"{D}/overlay2/{cid}", f"{dest}/overlay2/{cid}")
     with open(MOVED, "w") as f:
         f.write(dest)
+    status("moved", layers=len(rows), gb=gb)
     print(f"Verschoben nach {dest}. Endgültig gelöscht wird nach zwei Tagen.")
 
 
@@ -482,19 +506,33 @@ def verify():
         down = services_down(ignore)
         if down == []:
             os.remove(MOVED)
+            try:
+                last = json.load(open(STATUS))
+            except (OSError, ValueError):
+                last = {}
+            status("ok", layers=last.get("layers"), gb=last.get("gb"))
             print("Alle Services laufen, die verschobenen Layer bleiben im Papierkorb.")
             return
         time.sleep(15)
-    print(f"Nach {VERIFY_S // 60} min laufen nicht: {down if down is not None else 'Docker antwortet nicht'}.")
-    print("Hole die Layer zurück und starte Docker neu.")
+    reason = (f"Nach {VERIFY_S // 60} min liefen nicht: {', '.join(down)}" if down
+              else f"Docker antwortete nach {VERIFY_S // 60} min nicht")
+    print(reason + ". Hole die Layer zurück und starte Docker neu.")
     subprocess.run(["systemctl", "stop", "docker.socket", "docker.service"])
     restore(dest)
     os.makedirs(STATE, exist_ok=True)
     with open(DISABLED, "w") as f:
         f.write(f"zurückgeholt am {time.strftime('%Y-%m-%d %H:%M')}")
     os.remove(MOVED)
+    status("rolled_back", reason=reason, down=(down or [])[:50])
     subprocess.run(["systemctl", "start", "docker.service"])
-    print(f"Aussortieren abgeschaltet. Nach dem Nachsehen: rm {DISABLED}")
+    print("Aussortieren abgeschaltet. Nach dem Nachsehen: docker-layer-cleanup enable")
+
+
+def enable():
+    if os.path.exists(DISABLED):
+        os.remove(DISABLED)
+    status("enabled")
+    print("Eingeschaltet, verwaiste Layer werden beim nächsten Boot aussortiert.")
 
 
 def purge():
@@ -518,6 +556,8 @@ elif mode == "purge":
     purge()
 elif mode == "verify":
     verify()
+elif mode == "enable":
+    enable()
 else:
     sys.exit(__doc__)
 EOF

@@ -275,6 +275,20 @@ export const agentReportSchema = z.object({
       measuredAt: z.string().datetime({ offset: true }).nullish(),
     })
     .nullish(),
+  // Agent 1.19.0+: last run of the boot-time layer cleanup from auto-update.sh.
+  layerCleanup: z
+    .object({
+      phase: z
+        .enum(["nothing", "moved", "ok", "skipped", "rolled_back", "enabled"])
+        .nullish(),
+      at: z.string().datetime({ offset: true }).nullish(),
+      reason: optStr(500),
+      layers: num.int().nonnegative().nullish(),
+      gb: num.nonnegative().nullish(),
+      down: z.array(str(200)).max(50).nullish(),
+      disabled: z.boolean().nullish(),
+    })
+    .nullish(),
   // Agent 1.14.0+: object storage found in Docker and folders to watch,
   // measured hourly.
   storage: z
@@ -420,6 +434,72 @@ export function osFindings(
       reference: OS_GUIDE,
     },
   ];
+}
+
+/** A boot that moved layers confirms within 15 minutes; later, it never did. */
+const LAYER_CLEANUP_VERIFY_MS = 30 * 60 * 1000;
+const LAYER_CLEANUP_ENABLE =
+  "Once it is fixed, run `sudo docker-layer-cleanup enable` on the server; the next reboot sorts the layers out again.";
+
+/**
+ * The boot-time layer cleanup (auto-update.sh) undid itself or did not run:
+ * nobody saw it at 04:00, so the reason has to show up here.
+ */
+export function layerCleanupFindings(
+  report: AgentReport,
+  now = Date.now()
+): FindingInput[] {
+  const c = report.layerCleanup;
+  if (!c) return [];
+  const at = c.at ? ` (${c.at.slice(0, 16).replace("T", " ")} UTC)` : "";
+  if (c.phase === "rolled_back" || (c.disabled && c.phase !== "skipped")) {
+    const down = c.down?.length ? c.down.join(", ") : null;
+    return [
+      {
+        fingerprint: "docker:layer-cleanup-rolled-back",
+        severity: "high",
+        title: "Orphaned Docker layers were put back after a reboot",
+        detail: [
+          down
+            ? `${down} did not come up within 15 minutes after the boot that moved them${at}.`
+            : `${c.reason ?? "Not every service came up after the boot that moved them"}${at}.`,
+          "The cleanup stopped Docker, restored the layers and started Docker again, so nothing is lost, and it stays off until someone has looked.",
+          down
+            ? `Check why ${down} did not start: \`docker service ps <name> --no-trunc\` shows the error. If it was broken before the reboot for another reason, that is the cause, not the cleanup.`
+            : "Check `journalctl -u docker -u docker-layer-verify -b` on the server.",
+          LAYER_CLEANUP_ENABLE,
+        ].join(" "),
+        target: "docker",
+      },
+    ];
+  }
+  if (c.phase === "skipped") {
+    return [
+      {
+        fingerprint: "docker:layer-cleanup-skipped",
+        severity: "medium",
+        title: "Orphaned Docker layers were not sorted out at boot",
+        detail: `The cleanup found something it does not trust and changed nothing: ${c.reason ?? "no reason given"}${at}. Orphaned layers stay on disk until this is resolved. Details: \`journalctl -u docker-layer-cleanup -b\`; a dry run: stop Docker, then \`sudo docker-layer-cleanup plan\`.`,
+        target: "docker",
+      },
+    ];
+  }
+  if (
+    c.phase === "moved" &&
+    c.at &&
+    now - Date.parse(c.at) > LAYER_CLEANUP_VERIFY_MS
+  ) {
+    return [
+      {
+        fingerprint: "docker:layer-cleanup-unverified",
+        severity: "medium",
+        title: "The check after the layer cleanup did not finish",
+        detail: `A boot moved ${c.layers ?? "some"} orphaned layers${c.gb != null ? ` (${c.gb} GB)` : ""} to /var/lib/docker-trash${at}, but docker-layer-verify never confirmed that all services came up, so it would not have rolled back either. Check the services, then \`journalctl -u docker-layer-verify -b\`. If something is missing: stop Docker, \`sudo docker-layer-cleanup restore\`, start Docker.`,
+        target: "docker",
+      },
+    ];
+  }
+  return [];
 }
 
 /**
@@ -659,6 +739,7 @@ export function hostFindings(
   }
   out.push(...tailscaleFindings(report, now));
   out.push(...osFindings(report, now));
+  out.push(...layerCleanupFindings(report, now));
 
   // Before the disk is full: a lot of it is only leftovers of old builds.
   const root = p.disks.find((d) => d.mount === "/") ?? p.disks[0];
@@ -685,7 +766,9 @@ export function hostFindings(
       fingerprint: "docker:hidden-layers",
       severity: hidden >= 25 * GB ? "high" : "medium",
       title: `Docker keeps ${gb(hidden)} of layers that its own report does not show`,
-      detail: `These are usually orphaned layers left by interrupted cleanups. docker system df does not count them, so the disk fills up without any warning. On the server, "docker-orphans.py plan" lists them without changing anything.`,
+      detail: report.layerCleanup
+        ? `These are usually orphaned layers left by interrupted cleanups. docker system df does not count them, so the disk fills up without any warning. The next reboot moves them aside (docker-layer-cleanup); the space is freed two days later.`
+        : `These are usually orphaned layers left by interrupted cleanups. docker system df does not count them, so the disk fills up without any warning. Run the current auto-update.sh from the Setup tab: from then on every reboot moves them aside before Docker starts.`,
       target: "docker",
     });
   }
@@ -1126,6 +1209,7 @@ export async function ingestReport(
     listeners: report.listeners ?? null,
     dockerRisks: report.dockerRisks ?? null,
     dockerDisk: report.dockerDisk ?? previous.dockerDisk ?? null,
+    layerCleanup: report.layerCleanup ?? null,
     storage: report.storage ?? previous.storage ?? null,
     storageForecast: null as unknown,
     oomEvent: (previous.oomEvent ?? null) as OomEvent | null,

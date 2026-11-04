@@ -74,6 +74,16 @@ Nothing is ever deleted. The findings say where the space goes and how to
 get it back, e.g. a MinIO lifecycle rule
 (`mc ilm rule add --expire-days 30 <alias>/<bucket>`).
 
+**Orphaned Docker layers** (agent 1.19.0) are the exception, and only on
+servers that ran the current `auto-update.sh`: at boot, before Docker starts,
+`docker-layer-cleanup` moves layers that belong to no image and no container
+to `/var/lib/docker-trash`, deleted two days later. If a Swarm service does
+not come up within 15 minutes, it puts them back by itself and stays off. The
+agent reports the last run from `/var/lib/docker-layer-cleanup/status.json`;
+a rollback, a skipped run or a missing check after the move is a finding with
+the reason and the fix (`sudo docker-layer-cleanup enable` switches it back
+on).
+
 ## Memory and CPU per app (agent 1.6.0)
 
 Every report carries memory (without page cache), CPU, the memory limit,
