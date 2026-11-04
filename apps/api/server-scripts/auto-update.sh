@@ -158,6 +158,11 @@ if [[ "$(docker node inspect "$node" --format '{{.Spec.Availability}}')" != "act
     echo "Knoten ist nicht aktiv, kein Drain."
     exit 0
 fi
+# Merken, welche Services schon vor dem Reboot nicht liefen: die Prüfung nach
+# dem Boot (docker-layer-cleanup verify) soll nicht ihretwegen zurückrollen.
+docker service ls --format '{{.Name}} {{.Replicas}}' \
+    | awk '$0 !~ /completed/ {split($2, a, "/"); if (a[1] + 0 < a[2] + 0) print $1}' \
+    > /var/lib/docker-reboot-guard/down-before || true
 touch "$MARKER"
 docker node update --availability drain "$node" >/dev/null || { echo "Drain fehlgeschlagen." >&2; rm -f "$MARKER"; exit 0; }
 echo "Knoten gedraint, warte auf das Ende der Swarm-Tasks."
@@ -238,6 +243,11 @@ EOF
 # /var/lib/docker-trash/<Zeitpunkt> – das geht auf derselben Platte sofort.
 # Ein täglicher Timer löscht den Papierkorb erst nach zwei Tagen endgültig.
 # Bis dahin holt "docker-layer-cleanup restore" (Docker gestoppt) alles zurück.
+# Das passiert auch automatisch: hat der Boot Layer verschoben, wartet
+# docker-layer-verify bis zu 15 min, bis alle Swarm-Services wieder laufen.
+# Klappt das nicht, stoppt es Docker, holt die Layer zurück, startet Docker neu
+# und schaltet das Aussortieren ab, bis jemand nachgesehen hat – nachts um
+# 04:00 muss also niemand reagieren.
 # Den BuildKit-Cache schiebt es mit in den Papierkorb, weil er auf Layer
 # zeigen kann, die zu keinem Image gehören; der nächste Build ist dann
 # ungecacht.
@@ -248,10 +258,17 @@ cat > /usr/local/sbin/docker-layer-cleanup <<'EOF'
   docker-layer-cleanup plan     Wie move, ändert aber nichts.
   docker-layer-cleanup restore  Docker GESTOPPT. Holt den jüngsten Papierkorb zurück.
   docker-layer-cleanup purge    Löscht Papierkörbe, die älter als zwei Tage sind.
+  docker-layer-cleanup verify   Nach dem Boot: laufen nicht alle Services, Layer automatisch zurückholen.
 """
-import hashlib, json, os, shutil, subprocess, sys, time
+import hashlib, json, os, re, shutil, subprocess, sys, time
 
 KEEP_S = 2 * 86400
+VERIFY_S = 15 * 60
+# /run ist bei jedem Boot leer: die Datei gibt es nur, wenn dieser Boot verschoben hat.
+MOVED = "/run/docker-layer-cleanup.moved"
+STATE = "/var/lib/docker-layer-cleanup"
+DISABLED = f"{STATE}/disabled"
+DOWN_BEFORE = "/var/lib/docker-reboot-guard/down-before"
 
 
 def read(path):
@@ -379,6 +396,8 @@ def size_gb(rows):
 def move(dry):
     if docker_running():
         skip("Docker läuft. Erst: systemctl stop docker.socket docker")
+    if os.path.exists(DISABLED) and not dry:
+        skip(f"abgeschaltet ({read(DISABLED)}). Nach dem Nachsehen: rm {DISABLED}")
     rows = orphans()
     if not rows:
         print("Keine verwaisten Layer.")
@@ -405,16 +424,19 @@ def move(dry):
             except OSError:
                 pass
             os.rename(f"{D}/overlay2/{cid}", f"{dest}/overlay2/{cid}")
+    with open(MOVED, "w") as f:
+        f.write(dest)
     print(f"Verschoben nach {dest}. Endgültig gelöscht wird nach zwei Tagen.")
 
 
-def restore():
+def restore(src=None):
     if docker_running():
         sys.exit("Docker läuft. Erst: systemctl stop docker.socket docker")
-    runs = sorted(os.listdir(TRASH)) if os.path.isdir(TRASH) else []
-    if not runs:
-        sys.exit("Kein Papierkorb vorhanden.")
-    src = f"{TRASH}/{runs[-1]}"
+    if src is None:
+        runs = sorted(os.listdir(TRASH)) if os.path.isdir(TRASH) else []
+        if not runs:
+            sys.exit("Kein Papierkorb vorhanden.")
+        src = f"{TRASH}/{runs[-1]}"
     for h in os.listdir(f"{src}/layerdb"):
         os.rename(f"{src}/layerdb/{h}", f"{BASE}/{h}")
     for cid in os.listdir(f"{src}/overlay2"):
@@ -426,7 +448,53 @@ def restore():
     if os.path.isdir(f"{src}/buildkit") and not os.path.exists(f"{D}/buildkit"):
         os.rename(f"{src}/buildkit", f"{D}/buildkit")
     shutil.rmtree(src)
-    print(f"Zurückgeholt aus {src}. Jetzt: systemctl start docker")
+    print(f"Zurückgeholt aus {src}.")
+
+
+def services_down(ignore):
+    """Swarm-Services unter Sollwert, oder None, wenn Docker nicht antwortet."""
+    r = subprocess.run(["docker", "service", "ls", "--format", "{{.Name}} {{.Replicas}}"],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        return None
+    down = []
+    for line in r.stdout.splitlines():
+        parts = line.split()
+        m = re.match(r"(\d+)/(\d+)", parts[1]) if len(parts) > 1 else None
+        if m and "completed" not in line and int(m[1]) < int(m[2]) and parts[0] not in ignore:
+            down.append(parts[0])
+    return down
+
+
+def verify():
+    if not os.path.exists(MOVED):
+        return
+    dest = read(MOVED)
+    ignore = set()
+    if os.path.exists(DOWN_BEFORE) and time.time() - os.path.getmtime(DOWN_BEFORE) < 86400:
+        ignore = set(read(DOWN_BEFORE).split())
+    deadline = time.time() + VERIFY_S
+    down = None
+    while time.time() < deadline:
+        # Falls die Reaktivierung nach dem Drain aufgegeben hat: nochmal.
+        if os.path.exists("/var/lib/docker-reboot-guard/drained"):
+            subprocess.run(["/usr/local/sbin/docker-swarm-reactivate"], capture_output=True)
+        down = services_down(ignore)
+        if down == []:
+            os.remove(MOVED)
+            print("Alle Services laufen, die verschobenen Layer bleiben im Papierkorb.")
+            return
+        time.sleep(15)
+    print(f"Nach {VERIFY_S // 60} min laufen nicht: {down if down is not None else 'Docker antwortet nicht'}.")
+    print("Hole die Layer zurück und starte Docker neu.")
+    subprocess.run(["systemctl", "stop", "docker.socket", "docker.service"])
+    restore(dest)
+    os.makedirs(STATE, exist_ok=True)
+    with open(DISABLED, "w") as f:
+        f.write(f"zurückgeholt am {time.strftime('%Y-%m-%d %H:%M')}")
+    os.remove(MOVED)
+    subprocess.run(["systemctl", "start", "docker.service"])
+    print(f"Aussortieren abgeschaltet. Nach dem Nachsehen: rm {DISABLED}")
 
 
 def purge():
@@ -448,6 +516,8 @@ elif mode == "restore":
     restore()
 elif mode == "purge":
     purge()
+elif mode == "verify":
+    verify()
 else:
     sys.exit(__doc__)
 EOF
@@ -467,6 +537,20 @@ Conflicts=shutdown.target
 Type=oneshot
 ExecStart=-/usr/local/sbin/docker-layer-cleanup move
 TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+cat > /etc/systemd/system/docker-layer-verify.service <<'EOF'
+[Unit]
+Description=Nach dem Aussortieren prüfen, ob alle Services laufen, sonst zurückholen
+After=docker.service docker-swarm-reactivate.service
+Wants=docker.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/docker-layer-cleanup verify
 
 [Install]
 WantedBy=multi-user.target
@@ -501,7 +585,7 @@ systemctl restart apt-daily-upgrade.timer
 systemctl enable --now docker-restart-policy-fix.timer
 systemctl enable --now docker-reboot-guard.service
 systemctl enable docker-swarm-reactivate.service
-systemctl enable docker-layer-cleanup.service
+systemctl enable docker-layer-cleanup.service docker-layer-verify.service
 systemctl enable --now docker-layer-purge.timer
 /usr/local/sbin/docker-restart-policy-fix || true
 
