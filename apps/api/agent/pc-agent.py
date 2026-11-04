@@ -55,7 +55,7 @@ import urllib.request
 from collections import Counter
 from datetime import datetime, timezone
 
-VERSION = "1.18.0"
+VERSION = "1.19.0"
 CONFIG_PATH = "/etc/pc-agent/config.json"
 INSTALL_DIR = "/usr/local/lib/pc-agent"
 CACHE_DIR = "/var/cache/pc-agent"
@@ -1255,6 +1255,39 @@ def collect_docker_disk():
     return result
 
 
+LAYER_CLEANUP_TOOL = "/usr/local/sbin/docker-layer-cleanup"
+LAYER_CLEANUP_STATE = "/var/lib/docker-layer-cleanup"
+LAYER_CLEANUP_PHASES = ("nothing", "moved", "ok", "skipped", "rolled_back", "enabled")
+
+
+def collect_layer_cleanup():
+    """
+    Outcome of the boot-time layer cleanup that auto-update.sh installs:
+    whether the last boot moved orphaned layers, skipped, or rolled back
+    because services did not come up. None when the tool is not installed.
+    """
+    if not os.path.exists(LAYER_CLEANUP_TOOL):
+        return None
+    try:
+        doc = json.loads(read(os.path.join(LAYER_CLEANUP_STATE, "status.json")) or "null")
+    except ValueError:
+        doc = None
+    if not isinstance(doc, dict):
+        doc = {}
+    phase = doc.get("phase")
+    layers, gb = doc.get("layers"), doc.get("gb")
+    down = doc.get("down") if isinstance(doc.get("down"), list) else []
+    return {
+        "phase": phase if phase in LAYER_CLEANUP_PHASES else None,
+        "at": clip(doc.get("at"), 40) if isinstance(doc.get("at"), str) else None,
+        "reason": clip(doc.get("reason"), 500) if isinstance(doc.get("reason"), str) else None,
+        "layers": layers if isinstance(layers, int) and 0 <= layers <= 1_000_000 else None,
+        "gb": float(gb) if isinstance(gb, (int, float)) and 0 <= gb <= 1_000_000 else None,
+        "down": [clip(x, 200) for x in down if isinstance(x, str)][:50],
+        "disabled": os.path.exists(os.path.join(LAYER_CLEANUP_STATE, "disabled")),
+    }
+
+
 # ---------------------------------------------------------------- storage
 
 # S3-compatible servers, by the last part of their image name.
@@ -1594,6 +1627,7 @@ def build_report(kind, cfg):
         "compromise": collect_compromise(),
         "tailscale": collect_tailscale(),
         "dockerDisk": collect_docker_disk(),
+        "layerCleanup": collect_layer_cleanup(),
         "storage": collect_storage(),
     }
     # Logs only with the 5-minute report: two kinds reading at once would
