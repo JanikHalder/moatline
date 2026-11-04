@@ -136,6 +136,11 @@ MARKER=/var/lib/docker-reboot-guard/drained
 
 docker info &>/dev/null || { echo "Docker läuft nicht, nichts zu tun."; exit 0; }
 
+# Container außerhalb des Swarms merken, die gerade laufen: nach dem Boot
+# startet docker-swarm-reactivate sie neu, falls ihr Netz nicht mitkam.
+docker ps --format '{{.Names}} {{.Label "com.docker.swarm.task.id"}}' \
+    | awk 'NF == 1 {print $1}' > /var/lib/docker-reboot-guard/running-before || true
+
 # 1. Laufende Image-Operationen abwarten.
 deadline=$(( $(date +%s) + 600 ))
 while pgrep -f 'docker (pull|build|buildx|load|push)' >/dev/null \
@@ -181,20 +186,73 @@ chmod 755 /usr/local/sbin/docker-reboot-guard
 cat > /usr/local/sbin/docker-swarm-reactivate <<'EOF'
 #!/usr/bin/env bash
 set -uo pipefail
-MARKER=/var/lib/docker-reboot-guard/drained
-[[ -f "$MARKER" ]] || exit 0
-# dockerd und Swarm brauchen nach dem Boot einen Moment.
-for _ in $(seq 60); do
-    node=$(docker info --format '{{.Swarm.NodeID}}' 2>/dev/null)
-    if [[ -n "$node" ]] && docker node update --availability active "$node" >/dev/null 2>&1; then
-        rm -f "$MARKER"
-        echo "Swarm-Knoten wieder aktiv."
-        exit 0
+STATE=/var/lib/docker-reboot-guard
+MARKER=$STATE/drained
+RUNNING=$STATE/running-before
+rc=0
+
+if [[ -f "$MARKER" ]]; then
+    # dockerd und Swarm brauchen nach dem Boot einen Moment.
+    active=0
+    for _ in $(seq 60); do
+        node=$(docker info --format '{{.Swarm.NodeID}}' 2>/dev/null)
+        if [[ -n "$node" ]] && docker node update --availability active "$node" >/dev/null 2>&1; then
+            rm -f "$MARKER"
+            echo "Swarm-Knoten wieder aktiv."
+            active=1
+            break
+        fi
+        sleep 5
+    done
+    if (( ! active )); then
+        echo "Swarm-Knoten konnte nicht reaktiviert werden – von Hand: docker node update --availability active <node>" >&2
+        rc=1
     fi
-    sleep 5
+fi
+
+# Container außerhalb des Swarms, die an einem Overlay-Netz hängen (etwa
+# dokploy-traefik an dokploy-network), startet Docker beim Boot oft, bevor das
+# Netz bereit ist. Sie bleiben dann mit Exit 128 stehen, und ein spätes
+# "docker start" bringt sie ohne funktionierendes Netz hoch: Traefik antwortet,
+# erreicht aber keine App (502). Erst ein Neustart bindet das Netz sauber an.
+# Neu gestartet wird, was vor dem Reboot lief, was beim letzten Versuch nicht
+# hochkam, und was mit Restart-Policy beim Start mit 128 abbrach.
+names=$( { [[ -f "$RUNNING" ]] && (( $(date +%s) - $(stat -c %Y "$RUNNING") < 86400 )) && cat "$RUNNING"
+           [[ -f "$STATE/not-started" ]] && cat "$STATE/not-started"
+           for id in $(docker ps -aq --filter exited=128 2>/dev/null); do
+               docker inspect -f '{{.Name}} {{.HostConfig.RestartPolicy.Name}}' "$id" \
+                   | awk '$2 == "always" || $2 == "unless-stopped" {print substr($1, 2)}'
+           done; } | sort -u)
+failed=()
+for name in $names; do
+    nets=$(docker inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$name" 2>/dev/null) || continue
+    overlay=0
+    for n in $nets; do
+        [[ "$(docker network inspect -f '{{.Driver}}' "$n" 2>/dev/null)" == overlay ]] && overlay=1
+    done
+    running=$(docker inspect -f '{{.State.Running}}' "$name")
+    (( overlay )) || [[ "$running" != true ]] || continue
+    # Das Overlay-Netz gibt es erst, wenn der Swarm läuft.
+    ok=0
+    for _ in $(seq 12); do
+        if docker restart -t 10 "$name" >/dev/null 2>&1 \
+           && [[ "$(docker inspect -f '{{.State.Running}}' "$name")" == true ]]; then
+            ok=1
+            break
+        fi
+        sleep 10
+    done
+    if (( ok )); then echo "Neu gestartet: $name"; else failed+=("$name"); fi
 done
-echo "Swarm-Knoten konnte nicht reaktiviert werden – von Hand: docker node update --availability active <node>" >&2
-exit 1
+rm -f "$RUNNING"
+if (( ${#failed[@]} )); then
+    printf '%s\n' "${failed[@]}" > "$STATE/not-started"
+    echo "Starten nicht: ${failed[*]}" >&2
+    rc=1
+else
+    rm -f "$STATE/not-started"
+fi
+exit $rc
 EOF
 chmod 755 /usr/local/sbin/docker-swarm-reactivate
 
@@ -219,7 +277,7 @@ EOF
 
 cat > /etc/systemd/system/docker-swarm-reactivate.service <<'EOF'
 [Unit]
-Description=Swarm-Knoten nach dem Reboot wieder aktivieren
+Description=Swarm-Knoten nach dem Reboot wieder aktivieren, Container am Overlay-Netz neu starten
 After=docker.service
 Requires=docker.service
 
@@ -275,6 +333,7 @@ DISABLED = f"{STATE}/disabled"
 STATUS = f"{STATE}/status.json"
 DRY = False
 DOWN_BEFORE = "/var/lib/docker-reboot-guard/down-before"
+NOT_STARTED = "/var/lib/docker-reboot-guard/not-started"
 
 
 def read(path):
@@ -504,6 +563,11 @@ def verify():
         if os.path.exists("/var/lib/docker-reboot-guard/drained"):
             subprocess.run(["/usr/local/sbin/docker-swarm-reactivate"], capture_output=True)
         down = services_down(ignore)
+        if down is not None and os.path.exists(NOT_STARTED):
+            # docker-swarm-reactivate bekam diese Container nicht hoch.
+            subprocess.run(["/usr/local/sbin/docker-swarm-reactivate"], capture_output=True)
+            if os.path.exists(NOT_STARTED):
+                down += [f"Container {n}" for n in read(NOT_STARTED).split()]
         if down == []:
             os.remove(MOVED)
             try:
