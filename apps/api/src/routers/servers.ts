@@ -30,6 +30,7 @@ import {
   requireSession,
 } from "../middleware/tenant";
 import { generateEnrollmentCode } from "../lib/agent-token";
+import { setupScriptStates, type SetupStamp } from "../lib/setup-scripts";
 import { audit } from "../lib/audit-log";
 import { clientIp, isPublicIp } from "../lib/client-ip";
 import { validateLiveUrl } from "../lib/live-check";
@@ -417,6 +418,9 @@ export const serversRouter = new Hono<{ Variables: TenantVariables }>()
     const orgId = requireOrganization(c);
     if (orgId instanceof Response) return orgId;
     const latest = bundledAgentVersion();
+    const currentScripts = Object.fromEntries(
+      SETUP_SCRIPTS.map((name) => [name, setupScript(name)?.sha256 ?? null])
+    );
     const rows = await db
       .select({
         id: servers.id,
@@ -444,6 +448,7 @@ export const serversRouter = new Hono<{ Variables: TenantVariables }>()
               rebootRequired?: boolean | null;
               autoUpdates?: boolean | null;
             } | null;
+            setupScripts?: SetupStamp[] | null;
           };
           return {
             id: s.id,
@@ -465,6 +470,7 @@ export const serversRouter = new Hono<{ Variables: TenantVariables }>()
               !!s.agentVersion &&
               !!latest &&
               isOlderVersion(s.agentVersion, latest),
+            setupScripts: setupScriptStates(r.setupScripts, currentScripts),
             lastReportAt: s.lastReportAt?.toISOString() ?? null,
           };
         })

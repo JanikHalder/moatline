@@ -190,6 +190,13 @@ The two scripts come from the private save-server repository and are served by
 this app with their checksums; after changing them there, run
 `pnpm sync:server-scripts` and deploy.
 
+After a successful run, each setup command writes the script's checksum and
+the time to `/var/lib/moatline/setup-scripts/<script>`. The agent (1.19.0+)
+reports these stamps, and **Versions → Servers** shows per server whether
+`harden-server.sh` and `auto-update.sh` are current, outdated (the script
+changed since — run the command from the Setup tab again) or unknown (never
+run through the app's command, or before stamps existed).
+
 New server or one that has been running for years — the same steps:
 
 1. **Servers → Add server** (owner/admin). Optionally enter its public IP for

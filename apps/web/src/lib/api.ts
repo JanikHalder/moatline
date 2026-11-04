@@ -1755,6 +1755,15 @@ export const api = {
         autoUpdates: boolean | null;
         agentVersion: string | null;
         agentOutdated: boolean;
+        /** reported: false — the agent is older than 1.19.0 and sends no stamps. */
+        setupScripts: {
+          reported: boolean;
+          scripts: Array<{
+            name: string;
+            state: "current" | "outdated" | "never";
+            ranAt: string | null;
+          }>;
+        };
         lastReportAt: string | null;
       }>;
     }>("/api/servers/versions"),

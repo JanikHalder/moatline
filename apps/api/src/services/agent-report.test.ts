@@ -268,6 +268,21 @@ describe("agentReportSchema", () => {
     };
     expect(agentReportSchema.safeParse(tooMany).success).toBe(false);
   });
+
+  it("accepts setup-script stamps and rejects anything but a sha256", () => {
+    const stamp = {
+      name: "auto-update.sh",
+      sha256: "a".repeat(64),
+      ranAt: "2026-11-04T11:00:00Z",
+    };
+    expect(report({ setupScripts: [stamp] }).setupScripts).toEqual([stamp]);
+    expect(
+      agentReportSchema.safeParse({
+        ...report(),
+        setupScripts: [{ ...stamp, sha256: "not-a-hash" }],
+      }).success
+    ).toBe(false);
+  });
 });
 
 describe("automatic updates", () => {

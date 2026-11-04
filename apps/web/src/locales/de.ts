@@ -1531,6 +1531,16 @@ export const de: Record<string, string> = {
   "{n} pending": "{n} offen",
   "no automatic updates": "keine automatischen Updates",
   "update available": "Update verfügbar",
+  "Setup scripts": "Setup-Skripte",
+  "needs agent 1.19.0": "braucht Agent 1.19.0",
+  "ran {when}": "ausgeführt {when}",
+  "{name} outdated": "{name} veraltet",
+  "{name} unknown": "{name} unbekannt",
+  "Not run through the app's setup command yet":
+    "Noch nicht über den Setup-Befehl der App ausgeführt",
+  "Setup scripts outdated": "Setup-Skripte veraltet",
+  "servers to run a setup script on again":
+    "Server, auf denen ein Setup-Skript erneut laufen muss",
   "Operating system, kernel, Docker and updates on every server \u2014 and which ones are out of support.":
     "Betriebssystem, Kernel, Docker und Updates auf jedem Server — und welche keinen Support mehr haben.",
   Coolify: "Coolify",
