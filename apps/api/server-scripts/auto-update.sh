@@ -226,12 +226,284 @@ ExecStart=/usr/local/sbin/docker-swarm-reactivate
 WantedBy=multi-user.target
 EOF
 
+# Verwaiste Layer beim Boot aussortieren. Bricht dockerd mitten im Löschen eines
+# Images ab (Reboot, Absturz, volle Platte), ist das Image weg, seine Layer
+# stehen aber noch in der Layer-Datenbank. Docker räumt sie nie mehr auf, und
+# "docker system df" zählt sie nicht – auf md-application-server-1 waren das
+# 83 GB. Im laufenden Betrieb darf man sie nicht löschen: dockerd hält die
+# Layer-Liste im Speicher und würde sie bei einem späteren Pull wiederverwenden.
+#
+# Deshalb läuft das beim Hochfahren, bevor dockerd startet (kostet also keine
+# zusätzliche Downtime), und verschiebt die Layer nur nach
+# /var/lib/docker-trash/<Zeitpunkt> – das geht auf derselben Platte sofort.
+# Ein täglicher Timer löscht den Papierkorb erst nach zwei Tagen endgültig.
+# Bis dahin holt "docker-layer-cleanup restore" (Docker gestoppt) alles zurück.
+# Den BuildKit-Cache schiebt es mit in den Papierkorb, weil er auf Layer
+# zeigen kann, die zu keinem Image gehören; der nächste Build ist dann
+# ungecacht.
+cat > /usr/local/sbin/docker-layer-cleanup <<'EOF'
+#!/usr/bin/env python3
+"""
+  docker-layer-cleanup move     Docker GESTOPPT. Verschiebt verwaiste Layer in den Papierkorb.
+  docker-layer-cleanup plan     Wie move, ändert aber nichts.
+  docker-layer-cleanup restore  Docker GESTOPPT. Holt den jüngsten Papierkorb zurück.
+  docker-layer-cleanup purge    Löscht Papierkörbe, die älter als zwei Tage sind.
+"""
+import hashlib, json, os, shutil, subprocess, sys, time
+
+KEEP_S = 2 * 86400
+
+
+def read(path):
+    with open(path) as f:
+        return f.read().strip()
+
+
+def config():
+    try:
+        return json.load(open("/etc/docker/daemon.json"))
+    except (OSError, ValueError):
+        return {}
+
+
+CFG = config()
+D = CFG.get("data-root") or CFG.get("graph") or "/var/lib/docker"
+D = D.rstrip("/")
+TRASH = D + "-trash"
+L = f"{D}/image/overlay2/layerdb"
+BASE = f"{L}/sha256"
+
+
+def docker_running():
+    for unit in ("docker.service", "docker.socket"):
+        if subprocess.run(["systemctl", "is-active", "--quiet", unit]).returncode == 0:
+            return True
+    return False
+
+
+def skip(msg):
+    print("Nichts verschoben:", msg)
+    sys.exit(0)
+
+
+def parent_of(h):
+    try:
+        return read(f"{BASE}/{h}/parent").split(":")[1]
+    except (OSError, IndexError):
+        return None
+
+
+def orphans():
+    if CFG.get("features", {}).get("containerd-snapshotter"):
+        skip("containerd-Image-Store aktiv, die Layer-Datenbank gilt hier nicht.")
+    if CFG.get("storage-driver", "overlay2") != "overlay2" or not os.path.isdir(BASE):
+        skip("kein overlay2.")
+    hashes = [h for h in os.listdir(BASE) if not h.endswith("-removing")]
+    if not hashes:
+        skip("keine Layer.")
+
+    # Layer, die zu einem Image gehören (chainID wie in der OCI-Spezifikation).
+    used = set()
+    imagedb = f"{D}/image/overlay2/imagedb/content/sha256"
+    images = os.listdir(imagedb) if os.path.isdir(imagedb) else []
+    if not images:
+        skip("keine Images gefunden, die Prüfung wäre nicht verlässlich.")
+    for f in images:
+        try:
+            diff_ids = json.load(open(f"{imagedb}/{f}"))["rootfs"]["diff_ids"]
+        except (OSError, ValueError, KeyError, TypeError) as e:
+            skip(f"Image {f[:12]} nicht lesbar ({e}).")
+        chain = None
+        for diff in diff_ids:
+            chain = diff if chain is None else "sha256:" + hashlib.sha256(f"{chain} {diff}".encode()).hexdigest()
+            used.add(chain.split(":")[1])
+    # Container brauchen ihren Basis-Layer, auch wenn ihr Image schon weg ist.
+    mounts = f"{L}/mounts"
+    for m in os.listdir(mounts) if os.path.isdir(mounts) else []:
+        p = None
+        try:
+            p = read(f"{mounts}/{m}/parent").split(":")[1]
+        except (OSError, IndexError):
+            pass
+        if p:
+            used.add(p)
+    # Alles unter einem genutzten Layer ist auch genutzt.
+    for h in list(used):
+        p = parent_of(h)
+        while p and p not in used:
+            used.add(p)
+            p = parent_of(p)
+
+    rows = []
+    for h in hashes:
+        if h in used:
+            continue
+        try:
+            rows.append((h, read(f"{BASE}/{h}/cache-id")))
+        except OSError:
+            rows.append((h, ""))
+    orph = {h for h, _ in rows}
+    cids = {c for _, c in rows if c}
+
+    # Nichts, was bleibt, darf von etwas abhängen, das geht.
+    for h in hashes:
+        if h in orph:
+            continue
+        if parent_of(h) in orph:
+            skip(f"Layer {h[:12]} hat einen verwaisten Layer als Eltern.")
+        try:
+            if read(f"{BASE}/{h}/cache-id") in cids:
+                skip(f"Layer {h[:12]} teilt ein Verzeichnis mit einem verwaisten Layer.")
+        except OSError:
+            pass
+    for m in os.listdir(mounts) if os.path.isdir(mounts) else []:
+        for name in ("mount-id", "init-id"):
+            try:
+                if read(f"{mounts}/{m}/{name}") in cids:
+                    skip(f"Container {m[:12]} nutzt ein verwaistes Verzeichnis.")
+            except OSError:
+                pass
+    return rows
+
+
+def size_gb(rows):
+    total = 0
+    for h, _ in rows:
+        try:
+            total += int(read(f"{BASE}/{h}/size") or 0)
+        except (OSError, ValueError):
+            pass
+    return total / 1e9
+
+
+def move(dry):
+    if docker_running():
+        skip("Docker läuft. Erst: systemctl stop docker.socket docker")
+    rows = orphans()
+    if not rows:
+        print("Keine verwaisten Layer.")
+        return
+    print(f"{len(rows)} verwaiste Layer, ca. {size_gb(rows):.1f} GB.")
+    if dry:
+        print("Probelauf, nichts geändert.")
+        return
+    dest = f"{TRASH}/{time.strftime('%Y%m%dT%H%M%S')}"
+    os.makedirs(f"{dest}/layerdb", exist_ok=True)
+    os.makedirs(f"{dest}/overlay2", exist_ok=True)
+    if os.stat(dest).st_dev != os.stat(D).st_dev:
+        shutil.rmtree(dest)
+        skip(f"{TRASH} liegt nicht auf derselben Platte wie {D}.")
+    if os.path.isdir(f"{D}/buildkit"):
+        os.rename(f"{D}/buildkit", f"{dest}/buildkit")
+    for h, cid in rows:
+        # Erst der Datenbank-Eintrag: bricht der Lauf ab, bleibt nur ein
+        # Verzeichnis liegen, das niemand mehr kennt.
+        os.rename(f"{BASE}/{h}", f"{dest}/layerdb/{h}")
+        if cid and os.path.isdir(f"{D}/overlay2/{cid}"):
+            try:
+                os.remove(f"{D}/overlay2/l/{read(f'{D}/overlay2/{cid}/link')}")
+            except OSError:
+                pass
+            os.rename(f"{D}/overlay2/{cid}", f"{dest}/overlay2/{cid}")
+    print(f"Verschoben nach {dest}. Endgültig gelöscht wird nach zwei Tagen.")
+
+
+def restore():
+    if docker_running():
+        sys.exit("Docker läuft. Erst: systemctl stop docker.socket docker")
+    runs = sorted(os.listdir(TRASH)) if os.path.isdir(TRASH) else []
+    if not runs:
+        sys.exit("Kein Papierkorb vorhanden.")
+    src = f"{TRASH}/{runs[-1]}"
+    for h in os.listdir(f"{src}/layerdb"):
+        os.rename(f"{src}/layerdb/{h}", f"{BASE}/{h}")
+    for cid in os.listdir(f"{src}/overlay2"):
+        os.rename(f"{src}/overlay2/{cid}", f"{D}/overlay2/{cid}")
+        try:
+            os.symlink(f"../{cid}/diff", f"{D}/overlay2/l/{read(f'{D}/overlay2/{cid}/link')}")
+        except OSError:
+            pass
+    if os.path.isdir(f"{src}/buildkit") and not os.path.exists(f"{D}/buildkit"):
+        os.rename(f"{src}/buildkit", f"{D}/buildkit")
+    shutil.rmtree(src)
+    print(f"Zurückgeholt aus {src}. Jetzt: systemctl start docker")
+
+
+def purge():
+    if not os.path.isdir(TRASH):
+        return
+    for run in sorted(os.listdir(TRASH)):
+        path = f"{TRASH}/{run}"
+        if time.time() - os.path.getmtime(path) > KEEP_S:
+            shutil.rmtree(path, ignore_errors=True)
+            print("Gelöscht:", path)
+
+
+if os.geteuid() != 0:
+    sys.exit("Bitte als root ausführen.")
+mode = sys.argv[1] if len(sys.argv) > 1 else ""
+if mode in ("move", "plan"):
+    move(dry=(mode == "plan"))
+elif mode == "restore":
+    restore()
+elif mode == "purge":
+    purge()
+else:
+    sys.exit(__doc__)
+EOF
+chmod 755 /usr/local/sbin/docker-layer-cleanup
+
+cat > /etc/systemd/system/docker-layer-cleanup.service <<'EOF'
+[Unit]
+Description=Verwaiste Docker-Layer vor dem Docker-Start aussortieren
+# Früh im Boot, noch vor docker.socket: sonst könnte ein Zugriff auf den
+# Socket dockerd starten, während Layer verschoben werden.
+DefaultDependencies=no
+After=local-fs.target
+Before=docker.service docker.socket shutdown.target
+Conflicts=shutdown.target
+
+[Service]
+Type=oneshot
+ExecStart=-/usr/local/sbin/docker-layer-cleanup move
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+cat > /etc/systemd/system/docker-layer-purge.service <<'EOF'
+[Unit]
+Description=Papierkorb der Docker-Layer nach zwei Tagen leeren
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/docker-layer-cleanup purge
+Nice=19
+IOSchedulingClass=idle
+EOF
+
+cat > /etc/systemd/system/docker-layer-purge.timer <<'EOF'
+[Unit]
+Description=Täglich alte Papierkörbe der Docker-Layer leeren
+
+[Timer]
+OnBootSec=1h
+OnCalendar=daily
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+
 systemctl daemon-reload
 systemctl restart apt-daily-upgrade.timer
 systemctl enable --now docker-restart-policy-fix.timer
 systemctl enable --now docker-reboot-guard.service
 systemctl enable docker-swarm-reactivate.service
+systemctl enable docker-layer-cleanup.service
+systemctl enable --now docker-layer-purge.timer
 /usr/local/sbin/docker-restart-policy-fix || true
 
 echo "Fertig auf $(hostname), Reboot-Zeit: ${REBOOT_TIME}"
-systemctl list-timers apt-daily-upgrade.timer docker-restart-policy-fix.timer --no-pager
+systemctl list-timers apt-daily-upgrade.timer docker-restart-policy-fix.timer docker-layer-purge.timer --no-pager
