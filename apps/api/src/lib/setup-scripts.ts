@@ -14,7 +14,7 @@ export type SetupStamp = {
 };
 
 /**
- * `reported: false` when the agent does not report stamps (before 1.19.0) —
+ * `reported: false` when the agent does not report stamps (before 1.20.0) —
  * then nothing is known. A missing stamp is "never": not run through the app's
  * setup command, or before stamps existed.
  */

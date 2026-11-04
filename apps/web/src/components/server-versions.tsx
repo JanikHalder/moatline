@@ -29,7 +29,7 @@ function SetupScripts({ setup }: { setup: SetupState }) {
   if (!setup.reported)
     return (
       <span className="text-xs text-muted-foreground">
-        {t("needs agent 1.19.0")}
+        {t("needs agent 1.20.0")}
       </span>
     );
   return (

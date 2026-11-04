@@ -331,7 +331,7 @@ export const agentReportSchema = z.object({
     )
     .max(20)
     .nullish(),
-  // Agent 1.19.0+: setup scripts run through the app's setup commands, from
+  // Agent 1.20.0+: setup scripts run through the app's setup commands, from
   // the stamps those commands leave on the server.
   setupScripts: z
     .array(
@@ -1227,7 +1227,7 @@ export async function ingestReport(
     oomEvent: (previous.oomEvent ?? null) as OomEvent | null,
     tailscale: report.tailscale ?? null,
     compromise: report.compromise ?? null,
-    // null from agents before 1.19.0: they do not look for stamps.
+    // null from agents before 1.20.0: they do not look for stamps.
     setupScripts: report.setupScripts ?? null,
     // A metrics report carries no Trivy data; keep the last full one.
     trivy: report.trivy

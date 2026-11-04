@@ -55,7 +55,7 @@ import urllib.request
 from collections import Counter
 from datetime import datetime, timezone
 
-VERSION = "1.19.0"
+VERSION = "1.20.0"
 CONFIG_PATH = "/etc/pc-agent/config.json"
 INSTALL_DIR = "/usr/local/lib/pc-agent"
 CACHE_DIR = "/var/cache/pc-agent"

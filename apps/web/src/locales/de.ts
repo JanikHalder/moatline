@@ -1532,7 +1532,7 @@ export const de: Record<string, string> = {
   "no automatic updates": "keine automatischen Updates",
   "update available": "Update verfügbar",
   "Setup scripts": "Setup-Skripte",
-  "needs agent 1.19.0": "braucht Agent 1.19.0",
+  "needs agent 1.20.0": "braucht Agent 1.20.0",
   "ran {when}": "ausgeführt {when}",
   "{name} outdated": "{name} veraltet",
   "{name} unknown": "{name} unbekannt",

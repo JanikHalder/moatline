@@ -25,7 +25,7 @@ function shellQuote(value: string): string | null {
   return value.includes("'") ? null : `'${value}'`;
 }
 
-/** Where a successful run leaves its stamp; the agent (1.19.0+) reports it. */
+/** Where a successful run leaves its stamp; the agent (1.20.0+) reports it. */
 const STAMP_DIR = "/var/lib/moatline/setup-scripts";
 
 /**
