@@ -55,10 +55,13 @@ import urllib.request
 from collections import Counter
 from datetime import datetime, timezone
 
-VERSION = "1.19.0"
+VERSION = "1.20.0"
 CONFIG_PATH = "/etc/pc-agent/config.json"
 INSTALL_DIR = "/usr/local/lib/pc-agent"
 CACHE_DIR = "/var/cache/pc-agent"
+# The setup commands in the app (harden-server.sh, auto-update.sh, …) leave
+# one stamp per script here after a successful run: "<sha256> <UTC time>".
+SETUP_STAMP_DIR = "/var/lib/moatline/setup-scripts"
 UNIT_DIR = "/etc/systemd/system"
 MAX_BODY = 7 * 1024 * 1024  # the API accepts 8 MB
 DEFAULT_SEVERITY = "MEDIUM,HIGH,CRITICAL"
@@ -1121,6 +1124,24 @@ def newest_file(path, limit=20000):
     return newest, size, bool(targets) and any(os.path.exists(t) for t in targets)
 
 
+def collect_setup_scripts():
+    """Which setup scripts ran here, and in which version, from the stamps the app's setup commands leave."""
+    try:
+        names = sorted(os.listdir(SETUP_STAMP_DIR))
+    except OSError:
+        return []
+    out = []
+    for name in names[:20]:
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}", name):
+            continue
+        parts = (read(os.path.join(SETUP_STAMP_DIR, name)) or "").split()
+        if not parts or not re.fullmatch(r"[0-9a-f]{64}", parts[0]):
+            continue
+        ran_at = parts[1] if len(parts) > 1 and re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ", parts[1]) else None
+        out.append({"name": name, "sha256": parts[0], "ranAt": ran_at})
+    return out
+
+
 def collect_backups():
     out = []
     for b in (remote_checks().get("backups") or [])[:20]:
@@ -1629,6 +1650,7 @@ def build_report(kind, cfg):
         "dockerDisk": collect_docker_disk(),
         "layerCleanup": collect_layer_cleanup(),
         "storage": collect_storage(),
+        "setupScripts": collect_setup_scripts(),
     }
     # Logs only with the 5-minute report: two kinds reading at once would
     # count the same lines twice.

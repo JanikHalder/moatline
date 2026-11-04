@@ -25,9 +25,14 @@ function shellQuote(value: string): string | null {
   return value.includes("'") ? null : `'${value}'`;
 }
 
+/** Where a successful run leaves its stamp; the agent (1.20.0+) reports it. */
+const STAMP_DIR = "/var/lib/moatline/setup-scripts";
+
 /**
  * Download, verify against the checksum the app computed, run — the same
- * pattern as the agent installer, so nothing runs as root unchecked.
+ * pattern as the agent installer, so nothing runs as root unchecked. After a
+ * successful run the checksum is stamped on the server, so the versions page
+ * can tell which servers ran an older version of the script.
  */
 function scriptCommand(
   install: AgentInstall,
@@ -41,6 +46,8 @@ function scriptCommand(
     `curl -fsSL ${s.url} -o ${file}`,
     `echo "${s.sha256}  ${file}" | sha256sum -c -`,
     `sudo bash ${file}${args.length ? ` ${args.join(" ")}` : ""}`,
+    `sudo mkdir -p ${STAMP_DIR}`,
+    `echo "${s.sha256} $(date -u +%Y-%m-%dT%H:%M:%SZ)" | sudo tee ${STAMP_DIR}/${name} >/dev/null`,
   ].join(" && ");
 }
 

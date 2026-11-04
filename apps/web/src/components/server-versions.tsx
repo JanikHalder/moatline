@@ -18,6 +18,48 @@ import { formatRelative } from "@/lib/schedule";
 import { useT } from "@/lib/i18n";
 
 export type ServerVersions = Awaited<ReturnType<typeof api.getServerVersions>>;
+type SetupState = ServerVersions["servers"][number]["setupScripts"];
+
+/**
+ * Which version of each setup script the server last ran through the app's
+ * setup command. "outdated" means: run it again from the server's Setup tab.
+ */
+function SetupScripts({ setup }: { setup: SetupState }) {
+  const t = useT();
+  if (!setup.reported)
+    return (
+      <span className="text-xs text-muted-foreground">
+        {t("needs agent 1.20.0")}
+      </span>
+    );
+  return (
+    <div className="flex flex-wrap gap-1">
+      {setup.scripts.map((s) => {
+        const name = s.name.replace(/\.sh$/, "");
+        const when = s.ranAt
+          ? t("ran {when}", { when: formatRelative(s.ranAt) ?? "" })
+          : undefined;
+        return s.state === "outdated" ? (
+          <Badge key={s.name} variant="warning" title={when}>
+            {t("{name} outdated", { name })}
+          </Badge>
+        ) : s.state === "current" ? (
+          <Badge key={s.name} variant="success" title={when}>
+            {name}
+          </Badge>
+        ) : (
+          <Badge
+            key={s.name}
+            variant="outline"
+            title={t("Not run through the app's setup command yet")}
+          >
+            {t("{name} unknown", { name })}
+          </Badge>
+        );
+      })}
+    </div>
+  );
+}
 
 /** OS, kernel, Docker and updates of every server — and which OS is out of support. */
 export function ServerVersionsTable() {
@@ -40,10 +82,13 @@ export function ServerVersionsTable() {
   const security = list.reduce((n, s) => n + (s.security ?? 0), 0);
   const reboot = list.filter((s) => s.rebootRequired).length;
   const agents = list.filter((s) => s.agentOutdated).length;
+  const scripts = list.filter((s) =>
+    s.setupScripts.scripts.some((x) => x.state === "outdated")
+  ).length;
 
   return (
     <div className="space-y-6">
-      <StatBand>
+      <StatBand className="lg:grid-cols-5">
         <StatCard
           label={t("OS out of support")}
           value={eol}
@@ -68,6 +113,12 @@ export function ServerVersionsTable() {
           tone={agents ? "warning" : "success"}
           description={t("servers on the current agent")}
         />
+        <StatCard
+          label={t("Setup scripts outdated")}
+          value={scripts}
+          tone={scripts ? "warning" : "success"}
+          description={t("servers to run a setup script on again")}
+        />
       </StatBand>
       <Card className="gap-0 overflow-hidden py-0">
         <Table>
@@ -82,6 +133,9 @@ export function ServerVersionsTable() {
                 Docker
               </TableHead>
               <TableHead>{t("Updates")}</TableHead>
+              <TableHead className="hidden @xl/main:table-cell">
+                {t("Setup scripts")}
+              </TableHead>
               <TableHead className="hidden pr-4 @xl/main:table-cell">
                 {t("Agent")}
               </TableHead>
@@ -165,6 +219,9 @@ export function ServerVersionsTable() {
                       </Badge>
                     )}
                   </div>
+                </TableCell>
+                <TableCell className="hidden @xl/main:table-cell">
+                  <SetupScripts setup={s.setupScripts} />
                 </TableCell>
                 <TableCell className="hidden pr-4 font-mono text-xs @xl/main:table-cell">
                   {s.agentVersion ?? "—"}
