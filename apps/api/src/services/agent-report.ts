@@ -484,7 +484,11 @@ export function layerCleanupFindings(
       },
     ];
   }
-  if (c.phase === "moved" && c.at && now - Date.parse(c.at) > LAYER_CLEANUP_VERIFY_MS) {
+  if (
+    c.phase === "moved" &&
+    c.at &&
+    now - Date.parse(c.at) > LAYER_CLEANUP_VERIFY_MS
+  ) {
     return [
       {
         fingerprint: "docker:layer-cleanup-unverified",

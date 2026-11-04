@@ -667,10 +667,19 @@ describe("layerCleanupFindings", () => {
 
   it("names the services after a rollback and how to switch it back on", () => {
     const [f] = layerCleanupFindings(
-      cleanup({ phase: "rolled_back", at, reason: "Nach 15 min liefen nicht: shop", down: ["shop"], disabled: true }),
+      cleanup({
+        phase: "rolled_back",
+        at,
+        reason: "Nach 15 min liefen nicht: shop",
+        down: ["shop"],
+        disabled: true,
+      }),
       now
     );
-    expect(f).toMatchObject({ fingerprint: "docker:layer-cleanup-rolled-back", severity: "high" });
+    expect(f).toMatchObject({
+      fingerprint: "docker:layer-cleanup-rolled-back",
+      severity: "high",
+    });
     expect(f.detail).toContain("shop did not come up");
     expect(f.detail).toContain("docker-layer-cleanup enable");
   });
@@ -680,25 +689,47 @@ describe("layerCleanupFindings", () => {
       cleanup({ phase: "skipped", at, reason: "Image abc nicht lesbar" }),
       now
     );
-    expect(f).toMatchObject({ fingerprint: "docker:layer-cleanup-skipped", severity: "medium" });
+    expect(f).toMatchObject({
+      fingerprint: "docker:layer-cleanup-skipped",
+      severity: "medium",
+    });
     expect(f.detail).toContain("Image abc nicht lesbar");
   });
 
   it("flags a move that was never confirmed, but not one still being checked", () => {
     const moved = cleanup({ phase: "moved", at, layers: 451, gb: 82.8 });
-    expect(layerCleanupFindings(moved, now)[0]?.fingerprint).toBe("docker:layer-cleanup-unverified");
-    expect(layerCleanupFindings(moved, Date.parse(at) + 5 * 60 * 1000)).toEqual([]);
+    expect(layerCleanupFindings(moved, now)[0]?.fingerprint).toBe(
+      "docker:layer-cleanup-unverified"
+    );
+    expect(layerCleanupFindings(moved, Date.parse(at) + 5 * 60 * 1000)).toEqual(
+      []
+    );
   });
 
   it("stays quiet after a good run, and when the tool is not installed", () => {
-    expect(layerCleanupFindings(cleanup({ phase: "ok", at, layers: 451, gb: 82.8 }), now)).toEqual([]);
-    expect(layerCleanupFindings(cleanup({ phase: "enabled", at }), now)).toEqual([]);
+    expect(
+      layerCleanupFindings(
+        cleanup({ phase: "ok", at, layers: 451, gb: 82.8 }),
+        now
+      )
+    ).toEqual([]);
+    expect(
+      layerCleanupFindings(cleanup({ phase: "enabled", at }), now)
+    ).toEqual([]);
     expect(layerCleanupFindings(report(), now)).toEqual([]);
   });
 
   it("accepts what the agent sends", () => {
     expect(() =>
-      cleanup({ phase: null, at: null, reason: null, layers: null, gb: null, down: [], disabled: false })
+      cleanup({
+        phase: null,
+        at: null,
+        reason: null,
+        layers: null,
+        gb: null,
+        down: [],
+        disabled: false,
+      })
     ).not.toThrow();
   });
 });
