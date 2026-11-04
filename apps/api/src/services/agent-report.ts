@@ -270,6 +270,8 @@ export const agentReportSchema = z.object({
       buildCache: dfPart.nullish(),
       containers: dfPart.nullish(),
       volumes: dfPart.nullish(),
+      // Agent 1.18.0+: size of /var/lib/docker/overlay2, the layers on disk.
+      overlay2Bytes: z.number().nonnegative().nullish(),
       measuredAt: z.string().datetime({ offset: true }).nullish(),
     })
     .nullish(),
@@ -377,6 +379,8 @@ export function hostPercentages(host: AgentReport["host"]): {
 const pct = (n: number) => `${Math.round(n)}%`;
 
 const GB = 1e9;
+/** Layers Docker does not list, from this size on, are a finding. */
+const HIDDEN_LAYERS_MIN_BYTES = 10 * GB;
 const gb = (n: number) =>
   n >= 10 * GB ? `${Math.round(n / GB)} GB` : `${(n / GB).toFixed(1)} GB`;
 
@@ -506,6 +510,22 @@ export function dockerReclaimable(report: AgentReport): {
   const buildCache = d?.buildCache?.reclaimableBytes ?? 0;
   const images = d?.images?.reclaimableBytes ?? 0;
   return { buildCache, images, total: buildCache + images };
+}
+
+/**
+ * Layers on disk that `docker system df` does not show (orphans left by
+ * interrupted cleanups). null when the agent did not measure overlay2.
+ * If Docker counts a shared layer more than once, the listed sum is larger
+ * than the disk use and this hides part of the gap: the result is a lower bound.
+ */
+export function dockerHiddenBytes(report: AgentReport): number | null {
+  const d = report.dockerDisk;
+  if (d?.overlay2Bytes == null) return null;
+  const listed =
+    (d.images?.sizeBytes ?? 0) +
+    (d.buildCache?.sizeBytes ?? 0) +
+    (d.containers?.sizeBytes ?? 0);
+  return Math.max(0, d.overlay2Bytes - listed);
 }
 
 /**
@@ -654,6 +674,18 @@ export function hostFindings(
       severity: root && root.pct >= 70 ? "medium" : "low",
       title: `Docker keeps ${gb(free.total)} of unused build cache and images`,
       detail: `Build cache ${gb(free.buildCache)}, unused images ${gb(free.images)}. Old builds pile up with every deploy until the disk is full — clear them under server → Overview → Docker storage.`,
+      target: "docker",
+    });
+  }
+
+  // Layers on disk that Docker does not list: the disk fills up unseen.
+  const hidden = dockerHiddenBytes(report);
+  if (hidden != null && hidden >= HIDDEN_LAYERS_MIN_BYTES) {
+    out.push({
+      fingerprint: "docker:hidden-layers",
+      severity: hidden >= 25 * GB ? "high" : "medium",
+      title: `Docker keeps ${gb(hidden)} of layers that its own report does not show`,
+      detail: `These are usually orphaned layers left by interrupted cleanups. docker system df does not count them, so the disk fills up without any warning. On the server, "docker-orphans.py plan" lists them without changing anything.`,
       target: "docker",
     });
   }
