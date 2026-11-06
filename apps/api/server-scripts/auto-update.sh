@@ -217,12 +217,66 @@ fi
 # erreicht aber keine App (502). Erst ein Neustart bindet das Netz sauber an.
 # Neu gestartet wird, was vor dem Reboot lief, was beim letzten Versuch nicht
 # hochkam, und was mit Restart-Policy beim Start mit 128 abbrach.
+#
+# Zwei Vorkehrungen gegen doppelte Adressen: Docker vergibt Standalone-Containern
+# ihre Adresse selbst, Swarm die der Service-VIPs und Tasks. Beide Vergaben
+# wissen kurz nach dem Boot nichts voneinander, und Traefik bekam so schon die
+# Adresse eines Service (10.0.1.2): Container läuft, Traefik schickt jede Anfrage
+# an sich selbst, 502. Deshalb (1) erst neu starten, wenn Swarm seine Services
+# wieder aufgebaut hat, und (2) nach dem Neustart prüfen, ob die Adresse schon
+# an Swarm vergeben ist, und sonst nochmal neu starten.
+
+# Adressen (Netz-ID und IP), die Swarm schon vergeben hat: Service-VIPs und die
+# Tasks auf diesem Knoten.
+swarm_addrs() {
+    local ids
+    {
+        ids=$(docker service ls -q 2>/dev/null)
+        [[ -z "$ids" ]] || docker service inspect $ids \
+            --format '{{range .Endpoint.VirtualIPs}}{{.NetworkID}} {{.Addr}}{{"\n"}}{{end}}' 2>/dev/null
+        ids=$(docker ps -q --filter label=com.docker.swarm.task.id 2>/dev/null)
+        [[ -z "$ids" ]] || docker inspect $ids \
+            --format '{{range $k, $v := .NetworkSettings.Networks}}{{$v.NetworkID}} {{$v.IPAddress}}{{"\n"}}{{end}}' 2>/dev/null
+    } | sed 's#/[0-9]*$##' | awk 'NF == 2' | sort -u
+}
+
+# Gibt die Adressen des Containers aus, die Swarm schon vergeben hat (leer: kein Konflikt).
+ip_conflict() {
+    local mine
+    mine=$(docker inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$v.NetworkID}} {{$v.IPAddress}}{{"\n"}}{{end}}' "$1" 2>/dev/null \
+        | awk 'NF == 2')
+    [[ -n "$mine" ]] || return 0
+    grep -Fxf <(printf '%s\n' "$mine") <(swarm_addrs) | awk '{print $2}' || true
+}
+
+# Wartet (höchstens 3 min), bis alle Services ihre Replikas haben. Services, die
+# schon vor dem Reboot nicht liefen, zählen nicht.
+wait_swarm_settled() {
+    local deadline=$(( $(date +%s) + 180 )) ignore=/dev/null out missing
+    if [[ -f "$STATE/down-before" ]] && (( $(date +%s) - $(stat -c %Y "$STATE/down-before") < 86400 )); then
+        ignore=$STATE/down-before
+    fi
+    while :; do
+        if out=$(docker service ls --format '{{.Name}} {{.Replicas}}' 2>/dev/null); then
+            missing=$(awk '$0 !~ /completed/ {split($2, a, "/"); if (a[1] + 0 < a[2] + 0) print $1}' <<<"$out" \
+                | grep -vxFf "$ignore" || true)
+            [[ -z "$missing" ]] && return 0
+        fi
+        (( $(date +%s) < deadline )) || break
+        sleep 5
+    done
+    echo "Nicht alle Swarm-Services sind nach 3 min oben, die Container werden trotzdem neu gestartet." >&2
+}
+
 names=$( { [[ -f "$RUNNING" ]] && (( $(date +%s) - $(stat -c %Y "$RUNNING") < 86400 )) && cat "$RUNNING"
            [[ -f "$STATE/not-started" ]] && cat "$STATE/not-started"
            for id in $(docker ps -aq --filter exited=128 2>/dev/null); do
                docker inspect -f '{{.Name}} {{.HostConfig.RestartPolicy.Name}}' "$id" \
                    | awk '$2 == "always" || $2 == "unless-stopped" {print substr($1, 2)}'
            done; } | sort -u)
+if [[ -n "$names" && "$(docker info --format '{{.Swarm.LocalNodeState}}' 2>/dev/null)" == active ]]; then
+    wait_swarm_settled
+fi
 failed=()
 for name in $names; do
     nets=$(docker inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$name" 2>/dev/null) || continue
@@ -234,15 +288,27 @@ for name in $names; do
     (( overlay )) || [[ "$running" != true ]] || continue
     # Das Overlay-Netz gibt es erst, wenn der Swarm läuft.
     ok=0
+    clash=
     for _ in $(seq 12); do
         if docker restart -t 10 "$name" >/dev/null 2>&1 \
            && [[ "$(docker inspect -f '{{.State.Running}}' "$name")" == true ]]; then
-            ok=1
-            break
+            clash=$(ip_conflict "$name" | tr '\n' ' ')
+            if [[ -z "$clash" ]]; then
+                ok=1
+                break
+            fi
+            echo "$name hat die Adresse ${clash% } mit einem Swarm-Service gemeinsam, starte neu." >&2
+            sleep 5
+            continue
         fi
         sleep 10
     done
-    if (( ok )); then echo "Neu gestartet: $name"; else failed+=("$name"); fi
+    if (( ok )); then
+        echo "Neu gestartet: $name"
+    else
+        [[ -z "$clash" ]] || echo "$name teilt sich weiter eine Adresse mit einem Swarm-Service: ${clash% }" >&2
+        failed+=("$name")
+    fi
 done
 rm -f "$RUNNING"
 if (( ${#failed[@]} )); then
