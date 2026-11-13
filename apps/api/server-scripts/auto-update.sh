@@ -249,10 +249,60 @@ ip_conflict() {
     grep -Fxf <(printf '%s\n' "$mine") <(swarm_addrs) | awk '{print $2}' || true
 }
 
-# Wartet (höchstens 3 min), bis alle Services ihre Replikas haben. Services, die
-# schon vor dem Reboot nicht liefen, zählen nicht.
+# Prüft einen Weg zu $2 (Service-VIP) aus dem Container $1: eine HTTP-Anfrage auf
+# Port 80. Die VIP leitet jeden Port an die Tasks weiter, "Connection refused" oder
+# eine HTTP-Antwort heißen also: der Weg steht. "Host is unreachable" oder ein
+# Timeout heißt: das Netz im Container ist veraltet (so war es am 13.11.2026: Traefik
+# lief, die Services auch, aber der Neustart direkt nach dem Boot kam zu früh).
+# 0 = erreichbar, 1 = nicht erreichbar, 2 = nicht prüfbar (kein wget im Container).
+overlay_probe() {
+    local out
+    out=$(docker exec "$1" wget -q -O /dev/null -T 3 "http://$2:80/" 2>&1) && return 0
+    case "$out" in
+        *[Rr]efused*|*"returned error"*|*"HTTP/"*) return 0 ;;
+        *"not found"*|*"No such file"*|*"not running"*|*"is restarting"*) return 2 ;;
+        *) return 1 ;;
+    esac
+}
+
+# Gibt die Service-VIPs aus, die der Container $1 nicht erreicht. Leer heißt: alles
+# erreichbar, oder es ließ sich nichts prüfen. Geprüft werden bis zu 6 Services, die
+# laufen (alle Replikas oben) und am selben Overlay-Netz hängen wie der Container.
+# Jede VIP bekommt drei Versuche, ein Service kann gerade erst gestartet sein.
+unreachable_vips() {
+    local name=$1 nets svc net ip rc try
+    local ips=()
+    nets=$(docker inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$v.NetworkID}}{{"\n"}}{{end}}' "$name" 2>/dev/null \
+        | awk 'NF')
+    [[ -n "$nets" ]] || return 0
+    for svc in $(docker service ls --format '{{.Name}} {{.Replicas}}' 2>/dev/null \
+                 | awk '$0 !~ /completed/ {split($2, a, "/"); if (a[1] + 0 > 0 && a[1] + 0 == a[2] + 0) print $1}'); do
+        while read -r net ip; do
+            grep -qxF "$net" <<<"$nets" || continue
+            ips+=("${ip%/*}")
+        done < <(docker service inspect "$svc" \
+                 --format '{{range .Endpoint.VirtualIPs}}{{.NetworkID}} {{.Addr}}{{"\n"}}{{end}}' 2>/dev/null)
+        (( ${#ips[@]} < 6 )) || break
+    done
+    (( ${#ips[@]} )) || return 0
+    for ip in "${ips[@]}"; do
+        rc=1
+        for try in 1 2 3; do
+            overlay_probe "$name" "$ip"
+            rc=$?
+            (( rc == 1 )) || break
+            sleep 2
+        done
+        (( rc != 1 )) || echo "$ip"
+    done
+}
+
+# Wartet (höchstens 10 min), bis alle Services ihre Replikas haben. Services, die
+# schon vor dem Reboot nicht liefen, zählen nicht. Auf md-application-server-1 waren
+# die Apps am 13.11.2026 erst gut 5 Minuten nach dem Boot wieder oben; mit drei
+# Minuten kam der Neustart von Traefik zu früh.
 wait_swarm_settled() {
-    local deadline=$(( $(date +%s) + 180 )) ignore=/dev/null out missing
+    local deadline=$(( $(date +%s) + 600 )) ignore=/dev/null out missing
     if [[ -f "$STATE/down-before" ]] && (( $(date +%s) - $(stat -c %Y "$STATE/down-before") < 86400 )); then
         ignore=$STATE/down-before
     fi
@@ -265,7 +315,7 @@ wait_swarm_settled() {
         (( $(date +%s) < deadline )) || break
         sleep 5
     done
-    echo "Nicht alle Swarm-Services sind nach 3 min oben, die Container werden trotzdem neu gestartet." >&2
+    echo "Nicht alle Swarm-Services sind nach 10 min oben, die Container werden trotzdem neu gestartet." >&2
 }
 
 names=$( { [[ -f "$RUNNING" ]] && (( $(date +%s) - $(stat -c %Y "$RUNNING") < 86400 )) && cat "$RUNNING"
@@ -289,22 +339,43 @@ for name in $names; do
     # Das Overlay-Netz gibt es erst, wenn der Swarm läuft.
     ok=0
     clash=
+    unreach=
+    unreach_n=0
     for _ in $(seq 12); do
+        clash=
+        unreach=
         if docker restart -t 10 "$name" >/dev/null 2>&1 \
            && [[ "$(docker inspect -f '{{.State.Running}}' "$name")" == true ]]; then
             clash=$(ip_conflict "$name" | tr '\n' ' ')
-            if [[ -z "$clash" ]]; then
-                ok=1
-                break
+            if [[ -n "$clash" ]]; then
+                echo "$name hat die Adresse ${clash% } mit einem Swarm-Service gemeinsam, starte neu." >&2
+                sleep 5
+                continue
             fi
-            echo "$name hat die Adresse ${clash% } mit einem Swarm-Service gemeinsam, starte neu." >&2
-            sleep 5
-            continue
+            # Läuft der Container, kommt er aber nicht an die Services heran (der
+            # Neustart war zu früh), hilft nur ein weiterer Neustart.
+            unreach=$(unreachable_vips "$name" | tr '\n' ' ')
+            if [[ -n "$unreach" ]]; then
+                # Höchstens 4 Neustarts deswegen: ein Fehlalarm darf keine Schleife
+                # werden, jeder Neustart legt kurz alle Seiten am Server lahm.
+                (( ++unreach_n < 4 )) || break
+                echo "$name erreicht ${unreach% } nicht, starte neu." >&2
+                sleep 5
+                continue
+            fi
+            ok=1
+            break
         fi
         sleep 10
     done
     if (( ok )); then
         echo "Neu gestartet: $name"
+    elif [[ -n "$unreach" ]]; then
+        # Läuft, erreicht aber die Services nicht: getrennt von not-started halten, das
+        # löst sonst die Rücknahme der Layer-Bereinigung aus, die damit nichts zu tun hat.
+        echo "$name erreicht die Swarm-Services weiter nicht (${unreach% }): von Hand 'docker restart $name'." >&2
+        printf '%s %s %s\n' "$(date -u +%FT%TZ)" "$name" "${unreach% }" >> "$STATE/overlay-unreachable"
+        rc=1
     else
         [[ -z "$clash" ]] || echo "$name teilt sich weiter eine Adresse mit einem Swarm-Service: ${clash% }" >&2
         failed+=("$name")
